@@ -1,0 +1,6 @@
+{
+  "name": "Thanaweya Amma Biology Revision",
+  "description": "An intensive interactive revision platform for Thanaweya Amma Biology, optimized for the modern conceptual exam system (النظام الجديد) with 6 comprehensive lectures, active recall, diagram storyboards, and exam simulation quizzes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
