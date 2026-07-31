@@ -25,7 +25,11 @@ import {
   Lightbulb,
   ShieldCheck,
   Zap,
-  BookOpen
+  BookOpen,
+  Eye,
+  EyeOff,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { MCQQuestion, LectureData } from '../types';
 import { fallbackQuestions } from '../data/fallbackQuestions';
@@ -34,6 +38,8 @@ import { recordMistake } from '../utils/mistakeBankUtils';
 interface MockExamToolProps {
   allLectures: LectureData[];
   onToast?: (msg: string) => void;
+  isFocusMode?: boolean;
+  onToggleFocusMode?: () => void;
 }
 
 interface MockExamQuestionItem {
@@ -43,7 +49,7 @@ interface MockExamQuestionItem {
   lectureTitle: string;
 }
 
-export function MockExamTool({ allLectures, onToast }: MockExamToolProps) {
+export function MockExamTool({ allLectures, onToast, isFocusMode, onToggleFocusMode }: MockExamToolProps) {
   // Exam Lifecycle State: 'intro' | 'active' | 'review_summary'
   const [examState, setExamState] = useState<'intro' | 'active' | 'review_summary'>('intro');
 
@@ -61,6 +67,7 @@ export function MockExamTool({ allLectures, onToast }: MockExamToolProps) {
   const TOTAL_EXAM_TIME_SECONDS = 3 * 60 * 60; // 10800 s
   const [timeLeft, setTimeLeft] = useState<number>(TOTAL_EXAM_TIME_SECONDS);
   const [isTimerPaused, setIsTimerPaused] = useState<boolean>(false);
+  const [isTimerHidden, setIsTimerHidden] = useState<boolean>(false);
   const [timeSpent, setTimeSpent] = useState<number>(0);
 
   // Filter state for post-exam review list: 'all' | 'correct' | 'wrong' | 'flagged'
@@ -394,49 +401,141 @@ export function MockExamTool({ allLectures, onToast }: MockExamToolProps) {
       {/* ----------------- STATE 2: ACTIVE EXAM INTERFACE ----------------- */}
       {examState === 'active' && activeItem && (
         <div className="space-y-6">
-          {/* TOP CONTROL BAR: TIMER + PROGRESS + SUBMIT */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-xl backdrop-blur-md sticky top-2 z-20 flex flex-wrap items-center justify-between gap-4">
-            {/* Exam Title & Question Counter */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
-                {currentIdx + 1}
+          {/* TOP CONTROL BAR: COUNTDOWN TIMER + PROGRESS + SUBMIT */}
+          <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-4 shadow-2xl backdrop-blur-md sticky top-2 z-30 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Exam Title & Question Counter */}
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center justify-center font-black">
+                  {currentIdx + 1}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-white font-bold">{activeItem.lectureTitle}</span>
+                    <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono">
+                      السؤال {currentIdx + 1} من 50
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">محاكاة امتحانات آخر العام الرسمية</span>
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-slate-400 block font-bold">سؤال {currentIdx + 1} من 50</span>
-                <span className="text-xs text-white font-bold">{activeItem.lectureTitle}</span>
+
+              {/* ENHANCED COUNTDOWN TIMER WITH HIDE TOGGLE */}
+              <div className="flex items-center gap-2">
+                <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border font-mono transition-all shadow-inner ${
+                  timeLeft < 15 * 60 
+                    ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 animate-pulse'
+                    : timeLeft < 30 * 60
+                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                      : 'bg-slate-950 border-slate-800 text-emerald-400'
+                }`}>
+                  <Timer className={`w-5 h-5 shrink-0 ${!isTimerPaused && !isTimerHidden ? 'animate-spin-slow text-amber-400' : 'text-slate-400'}`} />
+                  
+                  {isTimerHidden ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-sans font-extrabold text-slate-400 tracking-wider">
+                        •• : •• : ••
+                      </span>
+                      <span className="text-[10px] bg-slate-900 text-amber-300/80 px-2 py-0.5 rounded border border-slate-800 font-sans">
+                        مخفي للتركيز
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-lg font-black tracking-wider text-emerald-300 dir-ltr">
+                      {formatTime(timeLeft)}
+                    </span>
+                  )}
+
+                  {/* Pause / Resume Button */}
+                  <button
+                    onClick={() => {
+                      setIsTimerPaused(!isTimerPaused);
+                      onToast?.(isTimerPaused ? '▶️ تم استئناف مؤقت الاختبار.' : '⏸️ تم إيقاف مؤقت الاختبار مؤقتاً.');
+                    }}
+                    className="text-slate-400 hover:text-white mr-1 p-1.5 rounded-lg hover:bg-slate-900 transition-all cursor-pointer border border-transparent hover:border-slate-800"
+                    title={isTimerPaused ? 'استئناف المؤقت' : 'إيقاف مؤقت للمراجعة'}
+                  >
+                    {isTimerPaused ? <Play className="w-4 h-4 fill-current text-amber-400" /> : <Pause className="w-4 h-4 text-slate-300" />}
+                  </button>
+
+                  {/* Hide / Show Toggle Button */}
+                  <button
+                    onClick={() => {
+                      setIsTimerHidden(!isTimerHidden);
+                      onToast?.(isTimerHidden ? '👁️ تم إظهار مؤقت الامتحان التنازلي.' : '🙈 تم إخفاء المؤقت لتعزيز التركيز.');
+                    }}
+                    className={`p-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 border ${
+                      isTimerHidden
+                        ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                        : 'text-slate-400 hover:text-white border-transparent hover:border-slate-800 hover:bg-slate-900'
+                    }`}
+                    title={isTimerHidden ? 'إظهار المؤقت التنازلي' : 'إخفاء المؤقت لمن يفضل التركيز بدون توتر'}
+                  >
+                    {isTimerHidden ? (
+                      <EyeOff className="w-4 h-4 text-amber-400" />
+                    ) : (
+                      <Eye className="w-4 h-4 text-slate-400 hover:text-white" />
+                    )}
+                  </button>
+                </div>
+
+                {/* FOCUS MODE TOGGLE BUTTON */}
+                {onToggleFocusMode && (
+                  <button
+                    onClick={() => {
+                      onToggleFocusMode();
+                      onToast?.(!isFocusMode ? '🎯 تم تفعيل وضع التركيز! تم إخفاء الترويسة الرئيسية لتوفير أقصى مساحة رؤية.' : '🔓 تم إيقاف وضع التركيز وإظهار الترويسة.');
+                    }}
+                    className={`p-1.5 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm ${
+                      isFocusMode
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-amber-950/30'
+                        : 'bg-slate-950/80 hover:bg-slate-900 text-slate-300 border-slate-800'
+                    }`}
+                    title={isFocusMode ? 'خروج من وضع التركيز (إعادة إظهار الترويسة الرئيسية)' : 'تفعيل وضع التركيز (إخفاء الترويسة والتنبيهات المشتتة لزيادة المساحة)'}
+                  >
+                    {isFocusMode ? (
+                      <>
+                        <Minimize2 className="w-4 h-4 text-amber-400" />
+                        <span className="hidden sm:inline">إنهاء التركيز</span>
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="w-4 h-4 text-emerald-400" />
+                        <span className="hidden sm:inline">وضع التركيز 🎯</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {/* QUICK STATS & SUBMIT EXAM BUTTON */}
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-slate-400 hidden sm:block">
+                  المجاب عنه: <strong className="text-emerald-400 font-mono text-sm">{Object.keys(userAnswers).length}</strong> / 50
+                </div>
+
+                <button
+                  onClick={handleManualSubmitExam}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-lg shadow-emerald-950/40 flex items-center gap-2 cursor-pointer"
+                >
+                  <FileCheck2 className="w-4 h-4" />
+                  <span>تقديم الامتحان 🏁</span>
+                </button>
               </div>
             </div>
 
-            {/* COUNTDOWN TIMER */}
-            <div className={`flex items-center gap-3 px-4 py-2 rounded-xl border font-mono font-bold transition-all ${
-              timeLeft < 15 * 60 
-                ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 animate-pulse'
-                : 'bg-slate-950 border-slate-800 text-emerald-400'
-            }`}>
-              <Timer className="w-5 h-5 shrink-0" />
-              <span className="text-lg">{formatTime(timeLeft)}</span>
-              <button
-                onClick={() => setIsTimerPaused(!isTimerPaused)}
-                className="text-slate-400 hover:text-white mr-1 p-1 rounded hover:bg-slate-900 transition-colors"
-                title={isTimerPaused ? 'استئناف الوقت' : 'إيقاف مؤقت'}
-              >
-                {isTimerPaused ? <Play className="w-3.5 h-3.5 fill-current text-amber-400" /> : <Pause className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-
-            {/* QUICK STATS & SUBMIT EXAM BUTTON */}
-            <div className="flex items-center gap-3">
-              <div className="text-xs text-slate-400 hidden sm:block">
-                المجاب عنه: <strong className="text-emerald-400 font-mono">{Object.keys(userAnswers).length}</strong> / 50
-              </div>
-
-              <button
-                onClick={handleManualSubmitExam}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-emerald-950/40 flex items-center gap-2 cursor-pointer"
-              >
-                <FileCheck2 className="w-4 h-4" />
-                <span>تقديم الامتحان وإظهار التقرير</span>
-              </button>
+            {/* TIMER & EXAM PROGRESS BAR */}
+            <div className="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden border border-slate-850 flex">
+              <div
+                className={`h-full transition-all duration-1000 ${
+                  timeLeft < 15 * 60
+                    ? 'bg-rose-500'
+                    : timeLeft < 30 * 60
+                      ? 'bg-amber-500'
+                      : 'bg-emerald-500'
+                }`}
+                style={{ width: `${(timeLeft / TOTAL_EXAM_TIME_SECONDS) * 100}%` }}
+              />
             </div>
           </div>
 

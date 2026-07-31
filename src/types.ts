@@ -95,11 +95,12 @@ export interface MCQQuestion {
   correctAnswer: 'A' | 'B' | 'C' | 'D';
   explanation: {
     correct: string;
-    incorrectA: string;
-    incorrectB: string;
-    incorrectC: string;
+    incorrectA?: string;
+    incorrectB?: string;
+    incorrectC?: string;
+    incorrectD?: string;
   };
-  complexity: 'high' | 'medium';
+  complexity: 'high' | 'medium' | 'easy';
   sourceYear?: string; // e.g. "دور أول 2023" or "تجريبي 2024"
 }
 

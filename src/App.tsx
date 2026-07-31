@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BookOpen, 
@@ -35,7 +35,21 @@ import {
   Network,
   GraduationCap,
   AlertTriangle,
-  ShieldCheck
+  ShieldCheck,
+  Filter,
+  Wifi,
+  WifiOff,
+  Database,
+  Maximize2,
+  Minimize2,
+  Target,
+  Globe,
+  Type,
+  Mic,
+  MicOff,
+  Volume2,
+  Loader2,
+  BrainCircuit
 } from 'lucide-react';
 import { allLectures } from './data';
 import { biologyFlashcards, Flashcard } from './data/flashcards';
@@ -50,6 +64,10 @@ import { GuidanceModel2026Tool } from './components/GuidanceModel2026Tool';
 import { SpeedQuizTool } from './components/SpeedQuizTool';
 import { MistakeBankTool } from './components/MistakeBankTool';
 import { MockExamTool } from './components/MockExamTool';
+import { PastExamsEgyptTool } from './components/PastExamsEgyptTool';
+import { GlobalBenchmarkAnalyticsTool } from './components/GlobalBenchmarkAnalyticsTool';
+import { FormulasSheetTool } from './components/FormulasSheetTool';
+import { FloatingFormulaModal } from './components/FloatingFormulaModal';
 
 export default function App() {
   // Theme Toggle State - Default is Elegant Dark
@@ -73,10 +91,106 @@ export default function App() {
     });
   };
 
+  // Offline / Service Worker Connectivity State
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setFlashcardToast('🟢 تم استعادة الاتصال بالإنترنت.');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setFlashcardToast('📡 تعذر الاتصال بالإنترنت - المنصة تعمل الآن بالكامل في الوضع الأوفلاين ⚡');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Navigation & Selector States
   const [selectedLectureId, setSelectedLectureId] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<string>('concepts');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Voice Search States
+  const [isVoiceListening, setIsVoiceListening] = useState<boolean>(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceInterimText, setVoiceInterimText] = useState<string>('');
+  const recognitionRef = useRef<any>(null);
+
+  const stopVoiceSearch = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    setIsVoiceListening(false);
+    setVoiceInterimText('');
+  };
+
+  const startVoiceSearch = () => {
+    setVoiceError(null);
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      setVoiceError('خاصية التعرف على الصوت غير مدعومة في هذا المتصفح. يمكنك اختيار أحد مفاهيم النطق المقترحة بالأسفل.');
+      return;
+    }
+
+    try {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'ar-EG';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {
+        setIsVoiceListening(true);
+        setVoiceInterimText('');
+      };
+
+      recognition.onresult = (event: any) => {
+        let currentTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          currentTranscript += event.results[i][0].transcript;
+        }
+        setVoiceInterimText(currentTranscript);
+        setSearchQuery(currentTranscript);
+      };
+
+      recognition.onerror = (event: any) => {
+        setIsVoiceListening(false);
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setVoiceError('يرجى السماح بصلاحية الميكروفون للبحث الصوتي في الإعدادات.');
+        } else if (event.error === 'no-speech') {
+          setVoiceError('لم يتم التقاط صوت. تحدث بوضوح بالقرب من الميكروفون.');
+        } else {
+          setVoiceError('تعذر التقاط الصوت. يمكنك المحاولة مجدداً أو النقر على اقتراحات الصوت.');
+        }
+      };
+
+      recognition.onend = () => {
+        setIsVoiceListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      setIsVoiceListening(false);
+      setVoiceError('تعذر تشغيل الميكروفون. يرجى إعطاء الصلاحية.');
+    }
+  };
 
   // Find active lecture
   const activeLecture = useMemo(() => {
@@ -181,9 +295,113 @@ export default function App() {
     }
   };
 
+  const [isFocusMode, setIsFocusMode] = useState<boolean>(false);
+
+  // Reading Mode State (وضع القراءة المريحة للعين في تبويب الشرح والمفاهيم)
+  const [isReadingMode, setIsReadingMode] = useState<boolean>(false);
+  const [readingFontSize, setReadingFontSize] = useState<number>(19); // 16px, 19px, 22px, 26px
+  const [readingLineHeight, setReadingLineHeight] = useState<number>(1.85); // 1.5, 1.85, 2.1, 2.4
+  const [readingTheme, setReadingTheme] = useState<'sepia' | 'slate' | 'oled' | 'midnight'>('sepia');
+  const [readingMaxWidth, setReadingMaxWidth] = useState<'focused' | 'comfortable' | 'full'>('focused');
+  const [showReadingControls, setShowReadingControls] = useState<boolean>(false);
+
+  // Computed styles for Reading Mode theme
+  const readingThemeStyles = useMemo(() => {
+    switch (readingTheme) {
+      case 'sepia':
+        return {
+          cardBg: 'bg-[#1c1916]/95 border-[#382d24] text-[#e7e5e4] shadow-2xl',
+          headerBorder: 'border-[#382d24]',
+          titleColor: 'text-amber-300 font-extrabold',
+          headingColor: 'text-amber-200',
+          accentText: 'text-amber-400',
+          badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+          summaryBg: 'bg-[#15120f] border-[#382d24] border-r-4 border-r-amber-500',
+          summaryTitle: 'text-amber-400',
+          qaBg: 'bg-[#15120f] border-amber-500/30',
+          qaBoxBg: 'bg-[#1c1916] border-[#382d24]',
+          qaAnsBg: 'bg-[#15120f] border-amber-500/30 text-amber-200/90 border-r-amber-500',
+          strongColor: 'text-amber-200',
+        };
+      case 'oled':
+        return {
+          cardBg: 'bg-black border-zinc-800 text-zinc-100 shadow-2xl',
+          headerBorder: 'border-zinc-800',
+          titleColor: 'text-white font-extrabold',
+          headingColor: 'text-emerald-400',
+          accentText: 'text-emerald-400',
+          badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+          summaryBg: 'bg-zinc-950 border-zinc-800 border-r-4 border-r-emerald-500',
+          summaryTitle: 'text-emerald-400',
+          qaBg: 'bg-zinc-950 border-zinc-800',
+          qaBoxBg: 'bg-black border-zinc-800',
+          qaAnsBg: 'bg-zinc-950 border-emerald-500/30 text-emerald-300 border-r-emerald-500',
+          strongColor: 'text-white',
+        };
+      case 'midnight':
+        return {
+          cardBg: 'bg-[#0b132b]/95 border-[#1c2541] text-[#e2e8f0] shadow-2xl',
+          headerBorder: 'border-[#1c2541]',
+          titleColor: 'text-cyan-300 font-extrabold',
+          headingColor: 'text-cyan-200',
+          accentText: 'text-cyan-400',
+          badgeBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
+          summaryBg: 'bg-[#070d1f] border-[#1c2541] border-r-4 border-r-cyan-500',
+          summaryTitle: 'text-cyan-400',
+          qaBg: 'bg-[#070d1f] border-cyan-500/30',
+          qaBoxBg: 'bg-[#0b132b] border-[#1c2541]',
+          qaAnsBg: 'bg-[#070d1f] border-cyan-500/30 text-cyan-200/90 border-r-cyan-500',
+          strongColor: 'text-cyan-100',
+        };
+      case 'slate':
+      default:
+        return {
+          cardBg: 'bg-slate-900/90 border-slate-800 text-slate-200 shadow-xl',
+          headerBorder: 'border-slate-800',
+          titleColor: 'text-white font-extrabold',
+          headingColor: 'text-emerald-400',
+          accentText: 'text-emerald-400',
+          badgeBg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+          summaryBg: 'bg-slate-950/70 border-slate-800 border-r-4 border-r-emerald-500',
+          summaryTitle: 'text-slate-400',
+          qaBg: 'bg-slate-950/70 border-indigo-500/30',
+          qaBoxBg: 'bg-slate-900/80 border-slate-800',
+          qaAnsBg: 'bg-slate-950/80 border-emerald-500/20 text-emerald-300/90 border-r-emerald-500',
+          strongColor: 'text-white',
+        };
+    }
+  }, [readingTheme]);
+
+  const readingContainerWidthClass = useMemo(() => {
+    if (!isReadingMode) return 'w-full';
+    switch (readingMaxWidth) {
+      case 'focused':
+        return 'max-w-3xl mx-auto';
+      case 'comfortable':
+        return 'max-w-4xl mx-auto';
+      case 'full':
+      default:
+        return 'w-full';
+    }
+  }, [isReadingMode, readingMaxWidth]);
+
+  // Keydown listener to exit focus mode on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFocusMode) {
+        setIsFocusMode(false);
+        setFlashcardToast('🔓 تم الخروج من وضع التركيز وإعادة الترويسة.');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFocusMode]);
+
   const [quizMode, setQuizMode] = useState<'built-in' | 'extended'>('built-in');
   const [quizSubTab, setQuizSubTab] = useState<'practice' | 'speed_quiz' | 'mistake_bank' | 'mock_exam'>('practice');
+  const [performanceSubTab, setPerformanceSubTab] = useState<'benchmark_gaps' | 'overview'>('benchmark_gaps');
   const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'easy' | 'medium' | 'high'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'past_exams' | 'expectations_2026' | 'conceptual' | 'calculations'>('all');
   const [generationLoading, setGenerationLoading] = useState<boolean>(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [generatorDifficulty, setGeneratorDifficulty] = useState<'easy' | 'medium' | 'high'>('medium');
@@ -204,27 +422,45 @@ export default function App() {
     });
   }, [selectedLectureId, activeLecture.questionBank, customQuestions]);
 
-  // Filter questions by difficulty
+  // Filter questions by difficulty and source category
   const filteredQuestions = useMemo(() => {
     const pool = quizMode === 'built-in' ? activeLecture.questionBank : extendedQuestionPool;
-    if (difficultyFilter === 'all') return pool;
+    
     return pool.filter(q => {
-      // Direct comparison with q.complexity or matching text inside sourceYear
       const diffStr = q.complexity?.toLowerCase() || '';
       const sourceStr = q.sourceYear?.toLowerCase() || '';
-      
+      const text = q.questionText || '';
+
+      // 1. Difficulty Filter
+      let passDiff = true;
       if (difficultyFilter === 'high') {
-        return diffStr === 'high' || sourceStr.includes('عليا') || sourceStr.includes('صعبة');
+        passDiff = diffStr === 'high' || sourceStr.includes('عليا') || sourceStr.includes('صعبة');
+      } else if (difficultyFilter === 'medium') {
+        passDiff = diffStr === 'medium' || sourceStr.includes('متوسط');
+      } else if (difficultyFilter === 'easy') {
+        passDiff = diffStr === 'easy' || sourceStr.includes('سهل');
       }
-      if (difficultyFilter === 'medium') {
-        return diffStr === 'medium' || sourceStr.includes('متوسط');
+
+      if (!passDiff) return false;
+
+      // 2. Source & Type Category Filter
+      if (sourceFilter === 'all') return true;
+      if (sourceFilter === 'past_exams') {
+        return sourceStr.includes('دور') || sourceStr.includes('تجريبي') || sourceStr.includes('امتحان') || sourceStr.includes('2021') || sourceStr.includes('2022') || sourceStr.includes('2023') || sourceStr.includes('2024') || sourceStr.includes('2025');
       }
-      if (difficultyFilter === 'easy') {
-        return diffStr === 'easy' || sourceStr.includes('سهل');
+      if (sourceFilter === 'expectations_2026') {
+        return sourceStr.includes('2026') || sourceStr.includes('توقعات') || sourceStr.includes('استرشادي') || sourceStr.includes('نموذج');
       }
+      if (sourceFilter === 'conceptual') {
+        return text.includes('سبب') || text.includes('فسر') || text.includes('يعلل') || text.includes('مفهوم') || text.includes('أهمية') || text.includes('ماذا يحدث') || sourceStr.includes('مفهوم');
+      }
+      if (sourceFilter === 'calculations') {
+        return text.includes('عدد') || text.includes('نسبة') || text.includes('حساب') || text.includes('قانون') || text.includes('%') || text.includes('كم') || text.includes('قطع');
+      }
+
       return true;
     });
-  }, [quizMode, activeLecture.questionBank, extendedQuestionPool, difficultyFilter]);
+  }, [quizMode, activeLecture.questionBank, extendedQuestionPool, difficultyFilter, sourceFilter]);
 
   // Quiz Engine States
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
@@ -334,13 +570,27 @@ export default function App() {
   // Active Recall States & Dark Study Mode controls
   const [recallCardIndex, setRecallCardIndex] = useState<number>(0);
   const [isCardFlipped, setIsCardFlipped] = useState<boolean>(false);
-  const [cardStatus, setCardStatus] = useState<Record<string, 'unseen' | 'review' | 'mastered'>>({});
+  const [cardStatus, setCardStatus] = useState<Record<string, 'unseen' | 'review' | 'mastered'>>(() => {
+    try {
+      const saved = localStorage.getItem('thanaweya_card_status');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [flashcardToast, setFlashcardToast] = useState<string | null>(null);
+
+  // Reset flashcard index and flip state when changing lectures
+  useEffect(() => {
+    setRecallCardIndex(0);
+    setIsCardFlipped(false);
+  }, [selectedLectureId]);
 
   // Eye-Care Dark Study Mode & Card Brightness states
   const [darkStudyMode, setDarkStudyMode] = useState<boolean>(true);
   const [darkStudyTheme, setDarkStudyTheme] = useState<'standard' | 'oled' | 'warm' | 'emerald'>('oled');
   const [cardBrightness, setCardBrightness] = useState<number>(85);
+  const [tiltIntensity, setTiltIntensity] = useState<number>(100);
 
   // Custom AI Generated Flashcards
   const [customFlashcards, setCustomFlashcards] = useState<Flashcard[]>(() => {
@@ -478,6 +728,9 @@ export default function App() {
 
   // AI Chatbot Modal State
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
+
+  // Floating Formula Sheet Quick Popup Modal State
+  const [isFormulaModalOpen, setIsFormulaModalOpen] = useState(false);
 
   // Study Reminders Modal State & Data Persistence
   const [isRemindersModalOpen, setIsRemindersModalOpen] = useState(false);
@@ -671,18 +924,56 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Professional Header */}
-      <header className="bg-slate-900/80 border-b border-slate-800 text-white shadow-xl relative overflow-hidden backdrop-blur-md">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent"></div>
-        <div className="max-w-7xl mx-auto px-6 py-10 relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="text-center md:text-right">
-            <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 mb-3">
-              <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/30">
-                <Award className="w-4 h-4" />
-                النظام التعليمي الحديث 2026 - علمي علوم
-              </div>
+      {/* Top Professional Header or Compact Focus Mode Bar */}
+      {isFocusMode ? (
+        <div className="bg-slate-900/95 border-b border-amber-500/40 px-6 py-3 flex items-center justify-between text-xs sticky top-0 z-50 backdrop-blur-md shadow-2xl animate-fade-in">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+            <span className="font-black text-amber-300 flex items-center gap-2 text-sm">
+              <Target className="w-4.5 h-4.5 text-amber-400" />
+              <span>وضع التركيز التام مفعّل (Focus Mode)</span>
+            </span>
+            <span className="text-slate-400 hidden md:inline text-xs">| تم إخفاء الترويسة الرئيسية والمشتتات لتوفير أقصى مساحة رؤية للاختبار</span>
+          </div>
 
-              {/* Theme Toggle Button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setIsFocusMode(false);
+                setFlashcardToast('🔓 تم الخروج من وضع التركيز وإعادة الترويسة.');
+              }}
+              className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-4 py-1.5 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md text-xs"
+            >
+              <Minimize2 className="w-4 h-4" />
+              <span>إنهاء التركيز (Esc)</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <header className="bg-slate-900/80 border-b border-slate-800 text-white shadow-xl relative overflow-hidden backdrop-blur-md">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent"></div>
+          <div className="max-w-7xl mx-auto px-6 py-10 relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div className="text-center md:text-right">
+              <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 mb-3">
+                <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/30">
+                  <Award className="w-4 h-4" />
+                  النظام التعليمي الحديث 2026 - علمي علوم
+                </div>
+
+                {/* Focus Mode Header Button */}
+                <button
+                  onClick={() => {
+                    setIsFocusMode(true);
+                    setFlashcardToast('🎯 تم تفعيل وضع التركيز! تم إخفاء الترويسة لزيادة المساحة المتاحة للاختبارات.');
+                  }}
+                  className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shadow-sm relative"
+                  title="إخفاء الترويسة والعناصر المشتتة لزيادة مساحة الرؤية بالكامل"
+                >
+                  <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+                  <span>وضع التركيز 🎯</span>
+                </button>
+
+                {/* Theme Toggle Button */}
               <button
                 onClick={toggleTheme}
                 className="inline-flex items-center gap-1.5 bg-slate-950/40 hover:bg-slate-900 text-slate-300 hover:text-white px-3 py-1 rounded-full text-xs font-bold border border-slate-800 transition-all cursor-pointer shadow-sm"
@@ -697,6 +988,35 @@ export default function App() {
                   <>
                     <Moon className="w-3.5 h-3.5 text-indigo-400" />
                     <span>الوضع الليلي (Elegant Dark)</span>
+                  </>
+                )}
+              </button>
+
+              {/* Service Worker Offline Status Indicator */}
+              <button
+                onClick={() => {
+                  setFlashcardToast(
+                    isOnline
+                      ? '⚡ الذاكرة المؤقتة نشطة (Service Worker) - جميع الدروس والأسئلة محفوظة للعمل بدون إنترنت.'
+                      : '📡 أنت الآن في وضع الأوفلاين! التطبيق يعمل بكفاءة كاملة مع حفظ سجل الإجابات محلياً.'
+                  );
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer shadow-sm relative ${
+                  !isOnline
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
+                    : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                }`}
+                title="حالة الاتصال والخدمة بدون إنترنت (Offline Capability)"
+              >
+                {!isOnline ? (
+                  <>
+                    <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                    <span>الوضع الأوفلاين (شغّال)</span>
+                  </>
+                ) : (
+                  <>
+                    <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>جاهز للأوفلاين ✓</span>
                   </>
                 )}
               </button>
@@ -779,6 +1099,7 @@ export default function App() {
           </div>
         </div>
       </header>
+      )}
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-6 py-10">
@@ -837,23 +1158,132 @@ export default function App() {
             </div>
           </div>
 
-          {/* Search Bar */}
-          <div className="relative w-full md:w-80">
-            <input
-              type="text"
-              placeholder="ابحث عن مفهوم أو تريكة أو مصطلح..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg pr-10 pl-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-200 placeholder-slate-500"
-            />
-            <Search className="w-4 h-4 text-slate-500 absolute right-3 top-3.5" />
-            {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery('')}
-                className="absolute left-3 top-3 text-xs text-slate-400 hover:text-slate-200"
-              >
-                مسح
-              </button>
+          {/* Voice Search Enabled Search Bar */}
+          <div className="relative w-full md:w-96">
+            <div className={`relative flex items-center bg-slate-900 border rounded-xl transition-all duration-300 ${
+              isVoiceListening 
+                ? 'border-emerald-500 shadow-lg shadow-emerald-500/20 ring-2 ring-emerald-500/40' 
+                : 'border-slate-800 hover:border-slate-700 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/40'
+            }`}>
+              <Search className="w-4 h-4 text-slate-500 absolute right-3 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={isVoiceListening ? "جاري الاستماع... تحدث بالمفهوم الآن..." : "ابحث عن مفهوم، تريكة، أو تحدث بالميكروفون..."}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-transparent pr-10 pl-24 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none font-sans"
+              />
+              
+              {/* Action Buttons: Clear + Voice Search Mic */}
+              <div className="absolute left-2 flex items-center gap-1.5">
+                {searchQuery && !isVoiceListening && (
+                  <button 
+                    onClick={() => { setSearchQuery(''); setVoiceInterimText(''); }}
+                    className="text-[11px] font-bold text-slate-400 hover:text-slate-200 px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+                    title="مسح البحث"
+                  >
+                    مسح
+                  </button>
+                )}
+
+                <button
+                  onClick={isVoiceListening ? stopVoiceSearch : startVoiceSearch}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 text-xs font-bold ${
+                    isVoiceListening
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse shadow-md shadow-rose-600/40'
+                      : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30'
+                  }`}
+                  title={isVoiceListening ? "إيقاف البحث الصوتي" : "البحث الصوتي الذكي بالميكروفون (Voice Search)"}
+                >
+                  {isVoiceListening ? (
+                    <>
+                      <MicOff className="w-3.5 h-3.5" />
+                      <span className="text-[10px]">إيقاف</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="hidden sm:inline text-[10px]">صوتي 🎙️</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Voice Listening Active Popup & Real-time Transcript */}
+            {isVoiceListening && (
+              <div className="absolute top-full right-0 left-0 mt-2 p-3.5 bg-slate-950 border border-emerald-500/50 rounded-xl shadow-2xl z-50 animate-in fade-in duration-200 dir-rtl backdrop-blur-md">
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="font-bold text-emerald-400 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                    <span>جاري الاستماع... تحدث بكلمات البحث الآن 🎙️</span>
+                  </span>
+                  <button
+                    onClick={stopVoiceSearch}
+                    className="text-[10px] text-rose-400 hover:underline font-bold cursor-pointer"
+                  >
+                    إغلاق ✕
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                  <Volume2 className="w-4 h-4 text-emerald-400 shrink-0 animate-pulse" />
+                  <span className="text-xs text-white font-mono truncate">
+                    {voiceInterimText || 'تحدث باسم المفهوم (مثال: "الروابط المستعرضة", "القطع العضلية", "DNA")...'}
+                  </span>
+                </div>
+
+                <div className="mt-2.5 pt-2 border-t border-slate-850 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
+                  <span className="text-slate-500 font-bold">تجربة سريعة للنطق:</span>
+                  {['الروابط المستعرضة', 'هرمون النمو', 'الدعامة التركيبية', 'القطع العضلية', 'الكيوتين'].map(sample => (
+                    <button
+                      key={sample}
+                      onClick={() => {
+                        setSearchQuery(sample);
+                        stopVoiceSearch();
+                      }}
+                      className="bg-slate-900 hover:bg-emerald-950/80 hover:text-emerald-300 text-slate-300 border border-slate-800 px-2 py-0.5 rounded transition-all cursor-pointer font-sans"
+                    >
+                      {sample}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Voice Search Permission / Browser Support Notice */}
+            {voiceError && (
+              <div className="absolute top-full right-0 left-0 mt-2 p-3.5 bg-slate-950 border border-amber-500/40 rounded-xl shadow-2xl z-50 text-xs text-amber-300 dir-rtl backdrop-blur-md">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold leading-relaxed">{voiceError}</p>
+                      <p className="text-[10px] text-slate-400 mt-1">يمكنك اختيار أي مفهوم صغته بالنطق لتجربة البحث الصوتي الفوري:</p>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {['القطع العضلية', 'الروابط المستعرضة', 'هرمون التيموسين', 'الكيوتين', 'حمض DNA'].map(phrase => (
+                          <button
+                            key={phrase}
+                            onClick={() => {
+                              setSearchQuery(phrase);
+                              setVoiceError(null);
+                            }}
+                            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 text-[10px] px-2.5 py-1 rounded cursor-pointer font-sans transition-colors"
+                          >
+                            🎙️ {phrase}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setVoiceError(null)}
+                    className="text-slate-500 hover:text-slate-300 text-xs font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -917,13 +1347,34 @@ export default function App() {
         {/* Selected Lecture Details Banner */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl mb-8 backdrop-blur-sm">
           <div className="flex flex-col md:flex-row gap-6 justify-between items-start">
-            <div>
-              <div className="text-emerald-400 font-bold text-xs uppercase tracking-wider mb-1 font-mono">
-                المحاضرة {activeLecture.id} من 6
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-emerald-400 font-bold text-xs uppercase tracking-wider font-mono bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20">
+                  المحاضرة {activeLecture.id} من 6
+                </span>
               </div>
-              <h2 className="text-2xl font-extrabold text-white mb-2">
-                {activeLecture.arabicTitle}
-              </h2>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <h2 className="text-2xl font-extrabold text-white flex items-center gap-3">
+                  <span>{activeLecture.arabicTitle}</span>
+                </h2>
+
+                <button
+                  id="jump-to-quiz-btn"
+                  onClick={() => {
+                    setActiveTab('quiz');
+                    const quizElem = document.getElementById('workstation-tabs-nav');
+                    if (quizElem) {
+                      quizElem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 border border-emerald-400/40 transition-all transform hover:-translate-y-0.5 cursor-pointer shrink-0"
+                  title="انتقال مباشر إلى قسم تدريبات واختبار هذه المحاضرة"
+                >
+                  <BrainCircuit className="w-4 h-4 text-emerald-100 animate-pulse" />
+                  <span>انتقال سريع للاختبار 📝</span>
+                </button>
+              </div>
               <p className="text-slate-400 text-sm mb-4 leading-relaxed">
                 {activeLecture.subtitle}
               </p>
@@ -963,7 +1414,7 @@ export default function App() {
         </div>
 
         {/* WORKSTATION TABS */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div id="workstation-tabs-nav" className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           
           {/* Workstation Navigation Menu */}
           <div className="lg:col-span-1 space-y-2">
@@ -997,6 +1448,22 @@ export default function App() {
                     <span>النموذج الاسترشادي 2026</span>
                   </div>
                   <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">الوزارة</span>
+                </button>
+
+                {/* Past National Exams Egypt Navigation Item */}
+                <button
+                  onClick={() => setActiveTab('past_exams_egypt')}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition-all text-right cursor-pointer ${
+                    activeTab === 'past_exams_egypt'
+                      ? 'bg-gradient-to-r from-emerald-500/20 to-amber-500/20 text-emerald-300 border-r-4 border-emerald-500 font-bold shadow-lg'
+                      : 'text-emerald-400/90 hover:bg-slate-800/60 hover:text-emerald-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Award className={`w-4 h-4 ${activeTab === 'past_exams_egypt' ? 'text-emerald-400' : 'text-emerald-400/80'}`} />
+                    <span>امتحانات مصر والنموذجية 🏛️</span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded font-extrabold">امتحانات رسمية</span>
                 </button>
 
                 <button
@@ -1167,6 +1634,18 @@ export default function App() {
                   <Calendar className={`w-4 h-4 ${activeTab === 'planner' ? 'text-emerald-400' : 'text-slate-400'}`} />
                   <span>مخطط المذاكرة وجدول التكرار</span>
                 </button>
+
+                {/* Loud Sound Alarm & Pomodoro Timer Button */}
+                <button
+                  onClick={() => setIsRemindersModalOpen(true)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition-all text-right cursor-pointer bg-gradient-to-r from-rose-500/15 via-amber-500/15 to-emerald-500/15 hover:from-rose-500/25 hover:to-emerald-500/25 text-rose-300 border border-rose-500/30 font-bold shadow-md"
+                >
+                  <div className="flex items-center gap-3">
+                    <BellRing className="w-4 h-4 text-rose-400 animate-pulse" />
+                    <span>🔊 منبه المذاكرة الصوتي والمؤقت</span>
+                  </div>
+                  <span className="text-[10px] bg-rose-500 text-white px-2 py-0.5 rounded font-black">صوت عالي ⚡</span>
+                </button>
               </div>
 
               {/* Progress Sidebar Widget matching Design HTML */}
@@ -1208,6 +1687,23 @@ export default function App() {
                 </motion.div>
               )}
 
+              {/* TAB: PAST EXAMS EGYPT (امتحانات مصر مع الإجابات النموذجية) */}
+              {activeTab === 'past_exams_egypt' && (
+                <motion.div
+                  key="past_exams_egypt"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <PastExamsEgyptTool
+                    onToast={(msg) => setFlashcardToast(msg)}
+                    isFocusMode={isFocusMode}
+                    onToggleFocusMode={() => setIsFocusMode(prev => !prev)}
+                  />
+                </motion.div>
+              )}
+
               {/* TAB: CONCEPT MAP (D3.js) */}
               {activeTab === 'concept_map' && (
                 <motion.div
@@ -1239,78 +1735,341 @@ export default function App() {
                   transition={{ duration: 0.2 }}
                   className="space-y-6"
                 >
-                  {activeLecture.concepts.map((concept, index) => (
-                    <div 
-                      key={concept.id} 
-                      className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 shadow-xl backdrop-blur-sm"
-                    >
-                      <h3 className="text-xl font-bold text-white border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
-                        <span className="bg-emerald-500/20 text-emerald-400 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border border-emerald-500/30">
-                          {index + 1}
-                        </span>
-                        {concept.arabicTitle}
-                      </h3>
-                      
-                      {/* Detailed explanatory text */}
-                      <div 
-                        className="prose prose-invert text-sm leading-relaxed text-slate-300 max-w-none space-y-4 pr-1"
-                        dangerouslySetInnerHTML={{ 
-                          __html: concept.details
-                            .replace(/\n/g, '<br />')
-                            .replace(/### (.*?):/g, '<h4 class="text-base font-extrabold text-white underline underline-offset-4 decoration-emerald-500/40 mt-6 mb-2">$1</h4>')
-                            .replace(/\* \*\*(.*?):\*\*/g, '• <strong class="text-white">$1:</strong>')
-                        }} 
-                      />
-
-                      {/* Key Points Summary block */}
-                      <div className="mt-6 bg-slate-950/50 border border-slate-850 border-r-4 border-emerald-500 rounded-l-lg p-4">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 font-mono flex items-center gap-1.5">
-                          <Info className="w-3.5 h-3.5 text-emerald-400" />
-                          نقاط ومفاتيح الاستذكار السريع (موضع أسئلة الامتحان):
-                        </h4>
-                        <ul className="space-y-2">
-                          {concept.keyPoints.map((point, i) => (
-                            <li key={i} className="text-xs text-slate-300 flex items-start gap-2">
-                              <span className="text-emerald-400 mt-0.5">•</span>
-                              <span>{point}</span>
-                            </li>
-                          ))}
-                        </ul>
+                  {/* Reading Mode Header & Controls Bar */}
+                  <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-xl backdrop-blur-md transition-all">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      {/* Mode Info & Indicator */}
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${
+                          isReadingMode 
+                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-md shadow-amber-500/10' 
+                            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                        }`}>
+                          <Eye className={`w-5 h-5 ${isReadingMode ? 'animate-pulse' : ''}`} />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-sm font-bold text-white">الشرح والتفاصيل المفصلة للمفاهيم</h3>
+                            {isReadingMode && (
+                              <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-sm">
+                                <Sparkles className="w-3 h-3 text-amber-400" /> وضع القراءة المريحة نَشِط
+                              </span>
+                            )}
+                            <button
+                              onClick={() => {
+                                setActiveTab('quiz');
+                                const quizElem = document.getElementById('workstation-tabs-nav');
+                                if (quizElem) quizElem.scrollIntoView({ behavior: 'smooth' });
+                              }}
+                              className="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm hover:scale-102"
+                              title="انتقال مباشر لاختبار أسئلة هذه المحاضرة"
+                            >
+                              <BrainCircuit className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>انتقال سريع للاختبار 🎯</span>
+                            </button>
+                          </div>
+                          <p className="text-xs text-slate-400">
+                            {isReadingMode 
+                              ? 'خط مكبّر، تباعد أسطر مريح، وألوان دافئة مخصصة لحماية العين أثناء استيعاب الشروحات الطويلة' 
+                              : 'تصفح الشروحات والمفاهيم الأساسية، أو فعّل وضع القراءة المريحة للعين لضبط الخط والتباعد'}
+                          </p>
+                        </div>
                       </div>
 
-                      {/* Deep-Dive Sub-Section Questions & Answers */}
-                      {concept.questionsAndAnswers && concept.questionsAndAnswers.length > 0 && (
-                        <div className="mt-6 space-y-3 bg-slate-950/70 border border-indigo-500/30 rounded-xl p-4">
-                          <div className="flex items-center gap-2 border-b border-indigo-500/20 pb-2">
-                            <HelpCircle className="w-4 h-4 text-indigo-400" />
-                            <h4 className="text-xs font-bold text-indigo-300 font-mono">
-                              أسئلة وإجابات تعمّقية حول هذه الجزئية (سؤال وجواب وتطبيق):
-                            </h4>
+                      {/* Main Toggle & Options Buttons */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setIsReadingMode(prev => !prev);
+                            if (!isReadingMode) setShowReadingControls(true);
+                          }}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 cursor-pointer shadow-md ${
+                            isReadingMode
+                              ? 'bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 border-amber-400 font-black scale-102'
+                              : 'bg-slate-800 hover:bg-slate-750 text-emerald-400 border-emerald-500/30 hover:border-emerald-500/60'
+                          }`}
+                        >
+                          <BookOpen className="w-4 h-4" />
+                          <span>{isReadingMode ? 'إيقاف وضع القراءة ❌' : '📖 تفعيل وضع القراءة المريحة'}</span>
+                        </button>
+
+                        <button
+                          onClick={() => setShowReadingControls(prev => !prev)}
+                          className={`p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                            showReadingControls
+                              ? 'bg-slate-800 text-white border-slate-700'
+                              : 'bg-slate-950 text-slate-400 hover:text-white border-slate-800'
+                          }`}
+                          title="تخصيص ألوان وخطوط القراءة"
+                        >
+                          <Sliders className="w-4 h-4" />
+                          <span className="hidden sm:inline text-[11px]">تخصيص</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Customization Drawer Panel */}
+                    <AnimatePresence>
+                      {(showReadingControls || isReadingMode) && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mt-4 pt-4 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs"
+                        >
+                          {/* 1. Font Size (حجم الخط) */}
+                          <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 space-y-2">
+                            <div className="flex justify-between items-center text-slate-300 font-bold">
+                              <span className="flex items-center gap-1 text-emerald-400">
+                                <Type className="w-3.5 h-3.5" /> حجم الخط:
+                              </span>
+                              <span className="font-mono text-amber-400 font-black">{readingFontSize}px</span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => setReadingFontSize(prev => Math.max(15, prev - 2))}
+                                className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-xs font-bold shrink-0 cursor-pointer"
+                                title="تصغير الخط"
+                              >
+                                A-
+                              </button>
+                              <div className="flex-1 flex justify-between gap-1">
+                                {[16, 19, 22, 26].map(sz => (
+                                  <button
+                                    key={sz}
+                                    onClick={() => setReadingFontSize(sz)}
+                                    className={`flex-1 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                                      readingFontSize === sz
+                                        ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                                        : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                    }`}
+                                  >
+                                    {sz === 16 ? 'عادي' : sz === 19 ? 'مريح' : sz === 22 ? 'كبير' : 'ضخم'}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                onClick={() => setReadingFontSize(prev => Math.min(30, prev + 2))}
+                                className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-lg text-xs font-bold shrink-0 cursor-pointer"
+                                title="تكبير الخط"
+                              >
+                                A+
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="space-y-3">
-                            {concept.questionsAndAnswers.map((qa, qaIdx) => (
-                              <div key={qaIdx} className="bg-slate-900/80 border border-slate-800 rounded-lg p-3.5 space-y-2">
-                                <div className="flex items-start gap-2">
-                                  <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-500/30 shrink-0 mt-0.5 font-mono">
-                                    س {qaIdx + 1}
-                                  </span>
-                                  <h5 className="text-xs font-extrabold text-white leading-relaxed">
-                                    {qa.question}
-                                  </h5>
-                                </div>
-                                
-                                <div className="bg-slate-950/80 border border-emerald-500/20 rounded p-3 text-xs text-emerald-300/90 leading-relaxed pr-3 border-r-2 border-r-emerald-500">
-                                  <strong className="text-emerald-400 block mb-1">الإجابة والتفسير الدقيق:</strong>
-                                  {qa.answer}
-                                </div>
-                              </div>
-                            ))}
+                          {/* 2. Line Spacing (تباعد الأسطر) */}
+                          <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 space-y-2">
+                            <div className="flex justify-between items-center text-slate-300 font-bold">
+                              <span className="flex items-center gap-1 text-emerald-400">
+                                <Sliders className="w-3.5 h-3.5" /> تباعد الأسطر:
+                              </span>
+                              <span className="font-mono text-amber-400 font-black">{readingLineHeight}</span>
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-1">
+                              {[
+                                { val: 1.5, label: 'عادي' },
+                                { val: 1.85, label: 'مريح' },
+                                { val: 2.1, label: 'واسع' },
+                                { val: 2.4, label: 'فسيح' }
+                              ].map(lh => (
+                                <button
+                                  key={lh.val}
+                                  onClick={() => setReadingLineHeight(lh.val)}
+                                  className={`py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer ${
+                                    readingLineHeight === lh.val
+                                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  {lh.label}
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+
+                          {/* 3. Theme Tone Color Chooser (مظهر الألوان لحماية العين) */}
+                          <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 space-y-2">
+                            <div className="text-slate-300 font-bold flex items-center gap-1 text-emerald-400">
+                              <Sun className="w-3.5 h-3.5" /> مظهر الألوان لحماية العين:
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-1">
+                              {[
+                                { id: 'sepia', label: '🍂 دافئ', title: 'كريمي دافئ (Warm Sepia)' },
+                                { id: 'slate', label: '🌙 داكن', title: 'رمادي داكن ناعم' },
+                                { id: 'oled', label: '🖤 أسود', title: 'أسود OLED تباين عالٍ' },
+                                { id: 'midnight', label: '🌌 ليلي', title: 'أزرق ليلي عميق' }
+                              ].map(th => (
+                                <button
+                                  key={th.id}
+                                  title={th.title}
+                                  onClick={() => setReadingTheme(th.id as any)}
+                                  className={`py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+                                    readingTheme === th.id
+                                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  {th.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 4. Reading Width Container (عرض مساحة التركيز) */}
+                          <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-850 space-y-2">
+                            <div className="text-slate-300 font-bold flex items-center gap-1 text-emerald-400">
+                              <Maximize2 className="w-3.5 h-3.5" /> عرض النص وقوة التركيز:
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-1">
+                              {[
+                                { id: 'focused', label: '🎯 مُركّز (768px)' },
+                                { id: 'comfortable', label: '📖 مريح (900px)' },
+                                { id: 'full', label: '🖥️ كامـل' }
+                              ].map(w => (
+                                <button
+                                  key={w.id}
+                                  onClick={() => setReadingMaxWidth(w.id as any)}
+                                  className={`py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer ${
+                                    readingMaxWidth === w.id
+                                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-black'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  {w.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </motion.div>
                       )}
-                    </div>
-                  ))}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Concepts List Container */}
+                  <div className={`space-y-6 transition-all ${readingContainerWidthClass}`}>
+                    {activeLecture.concepts.map((concept, index) => (
+                      <div 
+                        key={concept.id} 
+                        className={`rounded-2xl p-6 transition-all backdrop-blur-sm ${
+                          isReadingMode 
+                            ? readingThemeStyles.cardBg 
+                            : 'bg-slate-900/40 border border-slate-800 text-slate-300 shadow-xl'
+                        }`}
+                      >
+                        <h3 
+                          className={`font-bold border-b pb-3 mb-4 flex items-center gap-3 transition-all ${
+                            isReadingMode 
+                              ? `${readingThemeStyles.headerBorder} ${readingThemeStyles.titleColor}` 
+                              : 'text-xl text-white border-slate-800'
+                          }`}
+                          style={{
+                            fontSize: isReadingMode ? `${Math.round(readingFontSize * 1.2)}px` : undefined
+                          }}
+                        >
+                          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border shrink-0 ${
+                            isReadingMode ? readingThemeStyles.badgeBg : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                          }`}>
+                            {index + 1}
+                          </span>
+                          {concept.arabicTitle}
+                        </h3>
+                        
+                        {/* Detailed explanatory text */}
+                        <div 
+                          className="prose prose-invert max-w-none space-y-4 pr-1 transition-all"
+                          style={{ 
+                            fontSize: `${readingFontSize}px`,
+                            lineHeight: readingLineHeight,
+                            color: isReadingMode 
+                              ? (readingTheme === 'sepia' ? '#f5f5f4' : readingTheme === 'oled' ? '#f8fafc' : readingTheme === 'midnight' ? '#f1f5f9' : '#e2e8f0') 
+                              : undefined
+                          }}
+                          dangerouslySetInnerHTML={{ 
+                            __html: concept.details
+                              .replace(/\n/g, '<br />')
+                              .replace(/### (.*?):/g, `<h4 class="font-extrabold ${isReadingMode ? readingThemeStyles.headingColor : 'text-white'} underline underline-offset-4 decoration-emerald-500/40 mt-6 mb-2" style="font-size: ${Math.round(readingFontSize * 1.1)}px;">$1</h4>`)
+                              .replace(/\* \*\*(.*?):\*\*/g, `<strong class="${isReadingMode ? readingThemeStyles.strongColor : 'text-white'}">$1:</strong>`)
+                          }} 
+                        />
+
+                        {/* Key Points Summary block */}
+                        <div 
+                          className={`mt-6 rounded-xl p-4 transition-all ${
+                            isReadingMode ? readingThemeStyles.summaryBg : 'bg-slate-950/50 border border-slate-850 border-r-4 border-emerald-500'
+                          }`}
+                          style={{
+                            fontSize: isReadingMode ? `${Math.round(readingFontSize * 0.9)}px` : undefined,
+                            lineHeight: isReadingMode ? readingLineHeight : undefined
+                          }}
+                        >
+                          <h4 className={`font-bold uppercase tracking-wider mb-2 font-mono flex items-center gap-1.5 ${
+                            isReadingMode ? readingThemeStyles.summaryTitle : 'text-xs text-slate-400'
+                          }`}>
+                            <Info className="w-4 h-4 text-emerald-400" />
+                            نقاط ومفاتيح الاستذكار السريع (موضع أسئلة الامتحان):
+                          </h4>
+                          <ul className="space-y-2">
+                            {concept.keyPoints.map((point, i) => (
+                              <li key={i} className="flex items-start gap-2 leading-relaxed">
+                                <span className={`${isReadingMode ? readingThemeStyles.accentText : 'text-emerald-400'} mt-0.5`}>•</span>
+                                <span>{point}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {/* Deep-Dive Sub-Section Questions & Answers */}
+                        {concept.questionsAndAnswers && concept.questionsAndAnswers.length > 0 && (
+                          <div className={`mt-6 space-y-3 rounded-xl p-4 transition-all ${
+                            isReadingMode ? readingThemeStyles.qaBg : 'bg-slate-950/70 border border-indigo-500/30'
+                          }`}>
+                            <div className="flex items-center gap-2 border-b border-indigo-500/20 pb-2">
+                              <HelpCircle className="w-4 h-4 text-indigo-400" />
+                              <h4 className="text-xs font-bold text-indigo-300 font-mono">
+                                أسئلة وإجابات تعمّقية حول هذه الجزئية (سؤال وجواب وتطبيق):
+                              </h4>
+                            </div>
+
+                            <div className="space-y-3">
+                              {concept.questionsAndAnswers.map((qa, qaIdx) => (
+                                <div 
+                                  key={qaIdx} 
+                                  className={`rounded-lg p-3.5 space-y-2 transition-all ${
+                                    isReadingMode ? readingThemeStyles.qaBoxBg : 'bg-slate-900/80 border border-slate-800'
+                                  }`}
+                                  style={{
+                                    fontSize: isReadingMode ? `${Math.round(readingFontSize * 0.9)}px` : undefined,
+                                    lineHeight: isReadingMode ? readingLineHeight : undefined
+                                  }}
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-500/30 shrink-0 mt-0.5 font-mono">
+                                      س {qaIdx + 1}
+                                    </span>
+                                    <h5 className="font-extrabold text-white leading-relaxed">
+                                      {qa.question}
+                                    </h5>
+                                  </div>
+                                  
+                                  <div className={`rounded p-3 leading-relaxed pr-3 border-r-2 ${
+                                    isReadingMode ? readingThemeStyles.qaAnsBg : 'bg-slate-950/80 border border-emerald-500/20 text-emerald-300/90 border-r-emerald-500 text-xs'
+                                  }`}>
+                                    <strong className="text-emerald-400 block mb-1">الإجابة والتفسير الدقيق:</strong>
+                                    {qa.answer}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </motion.div>
               )}
 
@@ -1942,6 +2701,8 @@ export default function App() {
                     <MockExamTool
                       allLectures={allLectures}
                       onToast={setFlashcardToast}
+                      isFocusMode={isFocusMode}
+                      onToggleFocusMode={() => setIsFocusMode(prev => !prev)}
                     />
                   ) : quizSubTab === 'speed_quiz' ? (
                     <SpeedQuizTool
@@ -2083,6 +2844,40 @@ export default function App() {
                             )}
                           </button>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Source & Category Filters Row */}
+                    <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                      <span className="text-[11px] text-amber-400 font-bold block flex items-center gap-1.5">
+                        <Filter className="w-3.5 h-3.5 text-amber-400" />
+                        <span>تصنيف وتصنيف الأسئلة حسب المصدر ونوع التدريب:</span>
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { id: 'all', label: '🌐 جميع المصادر والأنواع' },
+                          { id: 'past_exams', label: '🏛️ امتحانات سنوات سابقة (مصر)' },
+                          { id: 'expectations_2026', label: '🔮 توقعات ونماذج 2026' },
+                          { id: 'conceptual', label: '🧠 أسئلة مفاهيم وتعليل' },
+                          { id: 'calculations', label: '📐 مسائل وقوانين رقمية' },
+                        ].map(src => (
+                          <button
+                            key={src.id}
+                            onClick={() => {
+                              setSourceFilter(src.id as any);
+                              setCurrentQuestionIndex(0);
+                              setSelectedOption(null);
+                              setIsQuizSubmitted(false);
+                            }}
+                            className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                              sourceFilter === src.id
+                                ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/50 text-amber-300 shadow-md'
+                                : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+                            }`}
+                          >
+                            {src.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
@@ -2591,7 +3386,8 @@ export default function App() {
                                 setDarkStudyMode(true);
                                 setDarkStudyTheme('oled');
                                 setCardBrightness(85);
-                                setFlashcardToast('🔄 تم إعادة ضبط السطوع والنمط للوضع المريح الموصى به (85%).');
+                                setTiltIntensity(100);
+                                setFlashcardToast('🔄 تم إعادة ضبط جميع إعدادات العرض والحركة (85% سطوع / 100% ميل 3D).');
                               }}
                               className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 px-2 py-1 bg-slate-900 rounded border border-slate-800 transition-all cursor-pointer"
                               title="إعادة ضبط إعدادات العرض"
@@ -2602,24 +3398,24 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* Interactive Dark Study & Brightness Settings Toolbar */}
+                        {/* Interactive Dark Study, Brightness & 3D Tilt Settings Toolbar */}
                         <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 mb-6 space-y-4 relative z-10">
-                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-stretch">
                             
                             {/* Color Theme Selector Pills */}
-                            <div className="md:col-span-6 space-y-2">
+                            <div className="md:col-span-12 lg:col-span-4 space-y-2">
                               <span className="text-[11px] text-slate-400 font-bold flex items-center gap-1.5">
                                 <Moon className="w-3.5 h-3.5 text-amber-400" />
-                                اختر لون المذاكرة المظلمة (Night Shift Themes):
+                                لون المذاكرة المظلمة (Night Shift):
                               </span>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              <div className="grid grid-cols-2 gap-2">
                                 <button
                                   onClick={() => {
                                     setDarkStudyMode(true);
                                     setDarkStudyTheme('oled');
                                     setFlashcardToast('🌑 تم تفعيل نمط OLED الأسود المطلق.');
                                   }}
-                                  className={`py-1.5 px-2.5 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
+                                  className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                     darkStudyMode && darkStudyTheme === 'oled'
                                       ? 'bg-zinc-900 text-amber-300 border-amber-500/50 shadow-md'
                                       : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
@@ -2634,7 +3430,7 @@ export default function App() {
                                     setDarkStudyTheme('warm');
                                     setFlashcardToast('☕ تم تفعيل نمط الشفق الدافئ (Night Shift).');
                                   }}
-                                  className={`py-1.5 px-2.5 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
+                                  className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                     darkStudyMode && darkStudyTheme === 'warm'
                                       ? 'bg-[#26190e] text-amber-300 border-amber-600/60 shadow-md'
                                       : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
@@ -2649,7 +3445,7 @@ export default function App() {
                                     setDarkStudyTheme('emerald');
                                     setFlashcardToast('🌿 تم تفعيل نمط الزمردي الهادئ.');
                                   }}
-                                  className={`py-1.5 px-2.5 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
+                                  className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                     darkStudyMode && darkStudyTheme === 'emerald'
                                       ? 'bg-[#09382d]/60 text-emerald-300 border-emerald-500/50 shadow-md'
                                       : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
@@ -2664,7 +3460,7 @@ export default function App() {
                                     setDarkStudyTheme('standard');
                                     setFlashcardToast('🌙 الوضع القياسي الداكن.');
                                   }}
-                                  className={`py-1.5 px-2.5 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
+                                  className={`py-1.5 px-2 text-[11px] font-bold rounded-lg border transition-all cursor-pointer text-center flex items-center justify-center gap-1 ${
                                     !darkStudyMode
                                       ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/40 shadow-md'
                                       : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
@@ -2676,11 +3472,11 @@ export default function App() {
                             </div>
 
                             {/* Card Brightness Slider & Readout */}
-                            <div className="md:col-span-6 space-y-2 border-t md:border-t-0 md:border-r border-slate-800 pt-3 md:pt-0 md:pr-4">
+                            <div className="md:col-span-6 lg:col-span-4 space-y-2 border-t md:border-t-0 border-r-0 lg:border-r border-slate-800 pt-3 md:pt-0 lg:pr-4">
                               <div className="flex justify-between items-center text-[11px]">
                                 <span className="font-bold text-slate-300 flex items-center gap-1.5">
                                   <Sun className="w-3.5 h-3.5 text-amber-400" />
-                                  التحكم في سطوع إضاءة البطاقة (Card Brightness):
+                                  سطوع إضاءة البطاقة:
                                 </span>
                                 <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                                   {cardBrightness}%
@@ -2715,7 +3511,7 @@ export default function App() {
                                       : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
                                   }`}
                                 >
-                                  30% خافت جداً
+                                  30% خافت
                                 </button>
 
                                 <button
@@ -2761,279 +3557,448 @@ export default function App() {
                                 </button>
                               </div>
                             </div>
+
+                            {/* 3D Tilt Motion Intensity Slider (.preserve-3d) */}
+                            <div className="md:col-span-6 lg:col-span-4 space-y-2 border-t md:border-t-0 border-r-0 lg:border-r border-slate-800 pt-3 md:pt-0 lg:pr-4">
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                                  <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                                  شدة تأثير ميل 3D (Tilt Intensity):
+                                </span>
+                                <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                  {tiltIntensity}%
+                                </span>
+                              </div>
+
+                              {/* Tilt Range Slider */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-500 shrink-0">2D</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="200"
+                                  step="10"
+                                  value={tiltIntensity}
+                                  onChange={(e) => setTiltIntensity(Number(e.target.value))}
+                                  className="w-full accent-amber-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <span className="text-[10px] font-bold text-amber-400 shrink-0">3D</span>
+                              </div>
+
+                              {/* Quick Tilt Presets */}
+                              <div className="flex items-center justify-between text-[10px] gap-1 pt-1">
+                                <button
+                                  onClick={() => {
+                                    setTiltIntensity(0);
+                                    setFlashcardToast('🛑 تم إيقاف الحركة الثلاثية الأبعاد (سطح ثابت 2D).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    tiltIntensity === 0
+                                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  0% مسطح
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setTiltIntensity(50);
+                                    setFlashcardToast('✨ تم ضبط شدة حركة 3D على 50% (خفيفة وهادئة).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    tiltIntensity === 50
+                                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  50% خفيف
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setTiltIntensity(100);
+                                    setFlashcardToast('🎯 تم ضبط شدة حركة 3D على 100% (قياسي مريح).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    tiltIntensity === 100
+                                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  100% قياسي
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setTiltIntensity(180);
+                                    setFlashcardToast('🚀 تم ضبط شدة حركة 3D على 180% (تجسيم قوي).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    tiltIntensity === 180
+                                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  180% مجسم
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
                         {currentFlashcards.length === 0 ? (
-                          <p className="text-slate-500 text-sm">عذراً، لم تتوفر بطاقات في هذا القسم بعد.</p>
-                        ) : (
-                          <div className="max-w-lg mx-auto space-y-6 relative z-10">
-                            
-                            {/* Statistics Summary Bar */}
-                            <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5 space-y-2 text-xs text-right" dir="rtl">
-                              <div className="flex justify-between items-center text-[11px] text-slate-400 font-bold">
-                                <span>نسبة الإتقان لهذه المحاضرة:</span>
-                                <span className="text-emerald-400 font-mono">
-                                  {currentFlashcards.length > 0 ? Math.round((stats.mastered / currentFlashcards.length) * 100) : 0}%
-                                </span>
-                              </div>
-                              
-                              {/* Segmented Progress Bar */}
-                              <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden flex">
-                                <div 
-                                  className="bg-emerald-500 transition-all duration-300"
-                                  style={{ width: `${currentFlashcards.length > 0 ? (stats.mastered / currentFlashcards.length) * 100 : 0}%` }}
-                                />
-                                <div 
-                                  className="bg-rose-500 transition-all duration-300"
-                                  style={{ width: `${currentFlashcards.length > 0 ? (stats.review / currentFlashcards.length) * 100 : 0}%` }}
-                                />
-                                <div 
-                                  className="bg-slate-700 transition-all duration-300"
-                                  style={{ width: `${currentFlashcards.length > 0 ? (stats.unseen / currentFlashcards.length) * 100 : 0}%` }}
-                                />
-                              </div>
-
-                              <div className="flex justify-between text-[10px] text-slate-400 font-bold pt-1">
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
-                                  <span>متقن: {stats.mastered}</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>
-                                  <span>مراجعة: {stats.review}</span>
-                                </span>
-                                <span className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-slate-600 inline-block"></span>
-                                  <span>جديد: {stats.unseen}</span>
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Interactive Flashcard with Dynamic Brightness Filter & Perspective Flip */}
-                            <div className="relative group">
-                              
-                              {/* Glowing Ambient Backdrop Spotlight when dark mode is enabled */}
-                              {darkStudyMode && (
-                                <div 
-                                  className="absolute -inset-1 rounded-3xl opacity-30 blur-md transition duration-500 group-hover:opacity-50"
-                                  style={{
-                                    background: darkStudyTheme === 'warm' 
-                                      ? 'radial-gradient(circle, rgba(217, 119, 6, 0.4) 0%, transparent 70%)'
-                                      : darkStudyTheme === 'emerald'
-                                      ? 'radial-gradient(circle, rgba(16, 185, 129, 0.4) 0%, transparent 70%)'
-                                      : 'radial-gradient(circle, rgba(245, 158, 11, 0.3) 0%, transparent 70%)'
-                                  }}
-                                />
-                              )}
-
-                              <div 
-                                onClick={() => setIsCardFlipped(!isCardFlipped)}
-                                className="h-72 cursor-pointer relative preserve-3d transition-all duration-500 ease-out"
-                                style={{
-                                  transform: isCardFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                                  perspective: '1000px',
-                                  filter: `brightness(${cardBrightness}%) contrast(${cardBrightness < 50 ? 115 : 100}%)`,
-                                }}
-                              >
-                                {/* Front Side */}
-                                <div 
-                                  className={`absolute inset-0 border-2 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backface-hidden ${themeStyles.cardFrontBg}`}
-                                  style={{ backfaceVisibility: 'hidden' }}
-                                >
-                                  <div className="flex justify-between items-center w-full">
-                                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
-                                      سؤال - {currentFlashcards[recallCardIndex].category}
-                                    </span>
-                                    {(() => {
-                                      const status = cardStatus[currentFlashcards[recallCardIndex].id] || 'unseen';
-                                      if (status === 'mastered') {
-                                        return (
-                                          <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1">
-                                            <span>متقن</span>
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                          </span>
-                                        );
-                                      }
-                                      if (status === 'review') {
-                                        return (
-                                          <span className="bg-rose-500/10 text-rose-400 text-[10px] px-2 py-0.5 rounded border border-rose-500/20 font-bold flex items-center gap-1">
-                                            <span>مراجعة</span>
-                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <span className="bg-slate-500/10 text-slate-400 text-[10px] px-2 py-0.5 rounded border border-slate-500/20 font-bold flex items-center gap-1">
-                                          <span>جديد</span>
-                                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                        </span>
-                                      );
-                                    })()}
-                                  </div>
-                                  
-                                  <div className="my-auto py-2">
-                                    <p className={`text-center font-bold text-base md:text-lg leading-relaxed px-2 ${themeStyles.textMain}`}>
-                                      {currentFlashcards[recallCardIndex].question}
-                                    </p>
-                                  </div>
-
-                                  <div className="flex items-center justify-between text-[10px] border-t border-slate-800/60 pt-2">
-                                    <span className={themeStyles.textMuted}>
-                                      سطوع البطاقة: {cardBrightness}%
-                                    </span>
-                                    <span className="text-amber-400/90 font-semibold flex items-center gap-1">
-                                      <span>انقر لقلب البطاقة والإجابة</span>
-                                      <RefreshCw className="w-3 h-3 text-amber-400" />
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Back Side */}
-                                <div 
-                                  className={`absolute inset-0 border-2 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backface-hidden ${themeStyles.cardBackBg}`}
-                                  style={{ 
-                                    backfaceVisibility: 'hidden',
-                                    transform: 'rotateY(180deg)'
-                                  }}
-                                >
-                                  <div className="flex justify-between items-center w-full">
-                                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
-                                      الإجابة النموذجية
-                                    </span>
-                                    {(() => {
-                                      const status = cardStatus[currentFlashcards[recallCardIndex].id] || 'unseen';
-                                      if (status === 'mastered') {
-                                        return (
-                                          <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1">
-                                            <span>متقن</span>
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                          </span>
-                                        );
-                                      }
-                                      if (status === 'review') {
-                                        return (
-                                          <span className="bg-rose-500/10 text-rose-400 text-[10px] px-2 py-0.5 rounded border border-rose-500/20 font-bold flex items-center gap-1">
-                                            <span>مراجعة</span>
-                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <span className="bg-slate-500/10 text-slate-400 text-[10px] px-2 py-0.5 rounded border border-slate-500/20 font-bold flex items-center gap-1">
-                                          <span>جديد</span>
-                                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-                                        </span>
-                                      );
-                                    })()}
-                                  </div>
-                                  
-                                  <div className="my-auto py-2">
-                                    <p className={`text-right text-xs md:text-sm leading-relaxed px-2 overflow-y-auto max-h-40 no-scrollbar ${themeStyles.textMain}`}>
-                                      {currentFlashcards[recallCardIndex].answer}
-                                    </p>
-                                  </div>
-
-                                  <div className="flex items-center justify-between text-[10px] border-t border-slate-800/60 pt-2">
-                                    <span className={themeStyles.textMuted}>
-                                      إجابة تفصيلية مراجعة
-                                    </span>
-                                    <span className="text-amber-400/90 font-semibold flex items-center gap-1">
-                                      <span>انقر للعودة للسؤال</span>
-                                      <RefreshCw className="w-3 h-3 text-amber-400" />
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Flashcard navigation controls */}
-                            <div className="flex justify-between items-center">
-                              <button
-                                onClick={() => {
-                                  if (recallCardIndex > 0) {
-                                    setRecallCardIndex(prev => prev - 1);
-                                    setIsCardFlipped(false);
-                                  }
-                                }}
-                                disabled={recallCardIndex === 0}
-                                className={`px-4 py-2 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
-                                  recallCardIndex === 0 
-                                    ? 'text-slate-700 bg-slate-950/20 border-slate-900 cursor-not-allowed'
-                                    : `${themeStyles.accentBtn} cursor-pointer`
-                                }`}
-                              >
-                                <ChevronRight className="w-4 h-4" />
-                                <span>السابق</span>
-                              </button>
-
-                              <span className="text-xs text-slate-400 font-mono font-bold bg-slate-950/60 px-3 py-1 rounded-full border border-slate-850">
-                                بطاقة {recallCardIndex + 1} من {currentFlashcards.length}
-                              </span>
-
-                              <button
-                                onClick={() => {
-                                  if (recallCardIndex < currentFlashcards.length - 1) {
-                                    setRecallCardIndex(prev => prev + 1);
-                                    setIsCardFlipped(false);
-                                  }
-                                }}
-                                disabled={recallCardIndex === currentFlashcards.length - 1}
-                                className={`px-4 py-2 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
-                                  recallCardIndex === currentFlashcards.length - 1 
-                                    ? 'text-slate-700 bg-slate-950/20 border-slate-900 cursor-not-allowed'
-                                    : `${themeStyles.accentBtn} cursor-pointer`
-                                }`}
-                              >
-                                <span>التالي</span>
-                                <ChevronLeft className="w-4 h-4" />
-                              </button>
-                            </div>
-
-                            {/* Active Recall rating states */}
-                            <div className="bg-slate-950/60 border border-slate-800/80 p-4 rounded-xl space-y-3">
-                              <span className="text-[11px] text-slate-300 block text-center font-bold">قيّم مستوى تمكنك من هذا السؤال لتنظيم المذاكرة التكرارية:</span>
-                              <div className="grid grid-cols-3 gap-2">
-                                <button
-                                  onClick={() => {
-                                    setCardStatus(prev => ({ ...prev, [currentFlashcards[recallCardIndex].id]: 'review' }));
-                                    setFlashcardToast('تم التحديد كـ "أحتاج لمراجعته لاحقاً".');
-                                  }}
-                                  className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs py-2 rounded-lg font-bold border border-rose-500/20 cursor-pointer transition-all"
-                                >
-                                  صعب / مراجعة 🔴
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setCardStatus(prev => ({ ...prev, [currentFlashcards[recallCardIndex].id]: 'unseen' }));
-                                    setFlashcardToast('تم التحديد كـ "متوسط الفهم".');
-                                  }}
-                                  className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs py-2 rounded-lg font-bold border border-amber-500/20 cursor-pointer transition-all"
-                                >
-                                  متوسط 🟡
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setCardStatus(prev => ({ ...prev, [currentFlashcards[recallCardIndex].id]: 'mastered' }));
-                                    setFlashcardToast('تم التحديد كـ "تم الإتقان بالكامل!".');
-                                  }}
-                                  className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs py-2 rounded-lg font-bold border border-emerald-500/20 cursor-pointer transition-all"
-                                >
-                                  أتقنته! 🟢
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Eye-Care Tip Banner */}
-                            <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 text-[11px] text-amber-300/90 leading-relaxed flex items-start gap-2">
-                              <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                              <p>
-                                💡 <strong>نصيحة طبية لحفظ ذاكرة البصر:</strong> عند الاستذكار المتأخر ليلاً، نوصي بتفعيل <strong>نمط الشفق الدافئ</strong> وضبط السطوع عند <strong>60% - 85%</strong> لحماية القرنية والتقليل من تشتت الانتباه الناجم عن الضوء الأزرق.
-                              </p>
-                            </div>
-
+                          <div className="text-center py-10 bg-slate-950/40 rounded-xl border border-slate-800">
+                            <Layers className="w-10 h-10 text-slate-600 mx-auto mb-2" />
+                            <p className="text-slate-400 text-sm font-semibold">عذراً، لم تتوفر بطاقات استذكار في هذا الفصل بعد.</p>
+                            <p className="text-slate-500 text-xs mt-1">يمكنك استخدام زر التوليد بالذكاء الاصطناعي لإضافة بطاقات مخصصة!</p>
                           </div>
-                        )}
+                        ) : (() => {
+                          const safeIndex = Math.min(Math.max(0, recallCardIndex), Math.max(0, currentFlashcards.length - 1));
+                          const activeCard = currentFlashcards[safeIndex];
+
+                          if (!activeCard) return null;
+
+                          return (
+                            <div className="max-w-lg mx-auto space-y-6 relative z-10">
+                              
+                              {/* Statistics Summary Bar */}
+                              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5 space-y-2 text-xs text-right" dir="rtl">
+                                <div className="flex justify-between items-center text-[11px] text-slate-400 font-bold">
+                                  <span>نسبة الإتقان لهذه المحاضرة:</span>
+                                  <span className="text-emerald-400 font-mono">
+                                    {currentFlashcards.length > 0 ? Math.round((stats.mastered / currentFlashcards.length) * 100) : 0}%
+                                  </span>
+                                </div>
+                                
+                                {/* Segmented Progress Bar */}
+                                <div className="h-1.5 w-full bg-slate-950 rounded-full overflow-hidden flex">
+                                  <div 
+                                    className="bg-emerald-500 transition-all duration-300"
+                                    style={{ width: `${currentFlashcards.length > 0 ? (stats.mastered / currentFlashcards.length) * 100 : 0}%` }}
+                                  />
+                                  <div 
+                                    className="bg-rose-500 transition-all duration-300"
+                                    style={{ width: `${currentFlashcards.length > 0 ? (stats.review / currentFlashcards.length) * 100 : 0}%` }}
+                                  />
+                                  <div 
+                                    className="bg-slate-700 transition-all duration-300"
+                                    style={{ width: `${currentFlashcards.length > 0 ? (stats.unseen / currentFlashcards.length) * 100 : 0}%` }}
+                                  />
+                                </div>
+
+                                <div className="flex justify-between text-[10px] text-slate-400 font-bold pt-1">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                                    <span>متقن: {stats.mastered}</span>
+                                  </span>
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>
+                                    <span>مراجعة: {stats.review}</span>
+                                  </span>
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-600 inline-block"></span>
+                                    <span>جديد: {stats.unseen}</span>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Interactive Flashcard with Dynamic Brightness Filter & Tactile 3D Perspective Flip */}
+                              <div 
+                                className="flashcard-perspective relative group transition-all duration-300"
+                                style={{
+                                  filter: `brightness(${cardBrightness}%) contrast(${cardBrightness < 50 ? 115 : 100}%)`,
+                                  '--tilt-factor': tiltIntensity / 100,
+                                } as React.CSSProperties}
+                              >
+                                
+                                {/* Glowing Ambient Backdrop Spotlight when dark mode is enabled */}
+                                {darkStudyMode && (
+                                  <div 
+                                    className="absolute -inset-1 rounded-3xl opacity-30 blur-md transition duration-500 group-hover:opacity-50"
+                                    style={{
+                                      background: darkStudyTheme === 'warm' 
+                                        ? 'radial-gradient(circle, rgba(217, 119, 6, 0.4) 0%, transparent 70%)'
+                                        : darkStudyTheme === 'emerald'
+                                        ? 'radial-gradient(circle, rgba(16, 185, 129, 0.4) 0%, transparent 70%)'
+                                        : 'radial-gradient(circle, rgba(245, 158, 11, 0.3) 0%, transparent 70%)'
+                                    }}
+                                  />
+                                )}
+
+                                <AnimatePresence mode="wait" initial={false}>
+                                  <motion.div 
+                                    key={activeCard.id}
+                                    initial={{ opacity: 0, x: 24, scale: 0.97 }}
+                                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                                    exit={{ opacity: 0, x: -24, scale: 0.97 }}
+                                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                                    onClick={() => setIsCardFlipped(!isCardFlipped)}
+                                    className={`h-72 cursor-pointer relative preserve-3d ${isCardFlipped ? 'flipped' : 'unflipped'}`}
+                                    style={{
+                                      '--tilt-factor': tiltIntensity / 100,
+                                      '--card-glow-color': (() => {
+                                        const cat = activeCard.category || '';
+                                        if (cat.includes('مخصصة')) return 'rgba(245, 158, 11, 0.45)';
+                                        if (cat.includes('كيمياء')) return 'rgba(16, 185, 129, 0.45)';
+                                        if (cat.includes('فيزياء')) return 'rgba(99, 102, 241, 0.45)';
+                                        if (cat.includes('أحياء')) return 'rgba(236, 72, 153, 0.45)';
+                                        if (cat.includes('رياضيات')) return 'rgba(14, 165, 233, 0.45)';
+                                        if (cat.includes('جيولوجيا')) return 'rgba(168, 85, 247, 0.45)';
+                                        let h = 0;
+                                        for (let i = 0; i < cat.length; i++) h = cat.charCodeAt(i) + ((h << 5) - h);
+                                        const colors = ['rgba(16, 185, 129, 0.45)', 'rgba(99, 102, 241, 0.45)', 'rgba(245, 158, 11, 0.45)', 'rgba(236, 72, 153, 0.45)', 'rgba(14, 165, 233, 0.45)', 'rgba(168, 85, 247, 0.45)', 'rgba(20, 184, 166, 0.45)'];
+                                        return colors[Math.abs(h) % colors.length];
+                                      })()
+                                    } as React.CSSProperties}
+                                  >
+                                    {/* Front Side (Question) */}
+                                  <div 
+                                    className={`absolute inset-0 border-2 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backface-hidden ${themeStyles.cardFrontBg} ${
+                                      isCardFlipped ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+                                    } transition-opacity duration-300`}
+                                    style={{ 
+                                      backfaceVisibility: 'hidden',
+                                      WebkitBackfaceVisibility: 'hidden' 
+                                    }}
+                                  >
+                                    <div className="flex justify-between items-center w-full">
+                                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
+                                        سؤال - {activeCard.category}
+                                      </span>
+                                      {(() => {
+                                        const status = cardStatus[activeCard.id] || 'unseen';
+                                        if (status === 'mastered') {
+                                          return (
+                                            <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1">
+                                              <span>متقن</span>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                            </span>
+                                          );
+                                        }
+                                        if (status === 'review') {
+                                          return (
+                                            <span className="bg-rose-500/10 text-rose-400 text-[10px] px-2 py-0.5 rounded border border-rose-500/20 font-bold flex items-center gap-1">
+                                              <span>مراجعة</span>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                            </span>
+                                          );
+                                        }
+                                        return (
+                                          <span className="bg-slate-500/10 text-slate-400 text-[10px] px-2 py-0.5 rounded border border-slate-500/20 font-bold flex items-center gap-1">
+                                            <span>جديد</span>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
+                                    
+                                    <div className="my-auto py-2">
+                                      <p className={`text-center font-bold text-base md:text-lg leading-relaxed px-2 ${themeStyles.textMain}`}>
+                                        {activeCard.question}
+                                      </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[10px] border-t border-slate-800/60 pt-2">
+                                      <span className={themeStyles.textMuted}>
+                                        سطوع البطاقة: {cardBrightness}%
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsCardFlipped(!isCardFlipped);
+                                        }}
+                                        aria-label="قلب البطاقة"
+                                        className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold border border-amber-500/40 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                                      >
+                                        <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
+                                        <span className="text-xs">قلب البطاقة</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Back Side (Answer) */}
+                                  <div 
+                                    className={`absolute inset-0 border-2 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backface-hidden ${themeStyles.cardBackBg} ${
+                                      isCardFlipped ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                                    } transition-opacity duration-300`}
+                                    style={{ 
+                                      backfaceVisibility: 'hidden',
+                                      WebkitBackfaceVisibility: 'hidden',
+                                      transform: 'rotateY(180deg)',
+                                      WebkitTransform: 'rotateY(180deg)'
+                                    }}
+                                  >
+                                    <div className="flex justify-between items-center w-full">
+                                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
+                                        الإجابة النموذجية
+                                      </span>
+                                      {(() => {
+                                        const status = cardStatus[activeCard.id] || 'unseen';
+                                        if (status === 'mastered') {
+                                          return (
+                                            <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1">
+                                              <span>متقن</span>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                            </span>
+                                          );
+                                        }
+                                        if (status === 'review') {
+                                          return (
+                                            <span className="bg-rose-500/10 text-rose-400 text-[10px] px-2 py-0.5 rounded border border-rose-500/20 font-bold flex items-center gap-1">
+                                              <span>مراجعة</span>
+                                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+                                            </span>
+                                          );
+                                        }
+                                        return (
+                                          <span className="bg-slate-500/10 text-slate-400 text-[10px] px-2 py-0.5 rounded border border-slate-500/20 font-bold flex items-center gap-1">
+                                            <span>جديد</span>
+                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                          </span>
+                                        );
+                                      })()}
+                                    </div>
+                                    
+                                    <div className="my-auto py-2">
+                                      <p className={`text-right text-xs md:text-sm leading-relaxed px-2 overflow-y-auto max-h-40 no-scrollbar ${themeStyles.textMain}`}>
+                                        {activeCard.answer}
+                                      </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-between text-[10px] border-t border-slate-800/60 pt-2">
+                                      <span className={themeStyles.textMuted}>
+                                        إجابة تفصيلية مراجعة
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsCardFlipped(!isCardFlipped);
+                                        }}
+                                        aria-label="قلب البطاقة"
+                                        className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold border border-amber-500/40 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95"
+                                      >
+                                        <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
+                                        <span className="text-xs">قلب البطاقة</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              </AnimatePresence>
+                            </div>
+
+                              {/* Flashcard navigation controls */}
+                              <div className="flex justify-between items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    if (safeIndex > 0) {
+                                      setRecallCardIndex(safeIndex - 1);
+                                      setIsCardFlipped(false);
+                                    }
+                                  }}
+                                  disabled={safeIndex === 0}
+                                  className={`px-4 py-2 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
+                                    safeIndex === 0 
+                                      ? 'text-slate-700 bg-slate-950/20 border-slate-900 cursor-not-allowed'
+                                      : `${themeStyles.accentBtn} cursor-pointer`
+                                  }`}
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                  <span>السابق</span>
+                                </button>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setIsCardFlipped(!isCardFlipped)}
+                                    className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                                    title="قلب البطاقة"
+                                  >
+                                    <RefreshCw className={`w-3.5 h-3.5 transition-transform duration-500 ${isCardFlipped ? 'rotate-180' : ''}`} />
+                                    <span>{isCardFlipped ? 'عرض السؤال' : 'عرض الإجابة'}</span>
+                                  </button>
+                                  <span className="text-xs text-slate-400 font-mono font-bold bg-slate-950/60 px-3 py-1.5 rounded-lg border border-slate-850">
+                                    بطاقة {safeIndex + 1} من {currentFlashcards.length}
+                                  </span>
+                                </div>
+
+                                <button
+                                  onClick={() => {
+                                    if (safeIndex < currentFlashcards.length - 1) {
+                                      setRecallCardIndex(safeIndex + 1);
+                                      setIsCardFlipped(false);
+                                    }
+                                  }}
+                                  disabled={safeIndex === currentFlashcards.length - 1}
+                                  className={`px-4 py-2 rounded-lg border flex items-center gap-1.5 text-xs font-bold transition-all ${
+                                    safeIndex === currentFlashcards.length - 1 
+                                      ? 'text-slate-700 bg-slate-950/20 border-slate-900 cursor-not-allowed'
+                                      : `${themeStyles.accentBtn} cursor-pointer`
+                                  }`}
+                                >
+                                  <span>التالي</span>
+                                  <ChevronLeft className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              {/* Active Recall rating states */}
+                              <div className="bg-slate-950/60 border border-slate-800/80 p-4 rounded-xl space-y-3">
+                                <span className="text-[11px] text-slate-300 block text-center font-bold">قيّم مستوى تمكنك من هذا السؤال لتنظيم المذاكرة التكرارية:</span>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setCardStatus(prev => {
+                                        const next = { ...prev, [activeCard.id]: 'review' as const };
+                                        localStorage.setItem('thanaweya_card_status', JSON.stringify(next));
+                                        return next;
+                                      });
+                                      setFlashcardToast('تم التحديد كـ "أحتاج لمراجعته لاحقاً".');
+                                    }}
+                                    className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs py-2 rounded-lg font-bold border border-rose-500/20 cursor-pointer transition-all"
+                                  >
+                                    صعب / مراجعة 🔴
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setCardStatus(prev => {
+                                        const next = { ...prev, [activeCard.id]: 'unseen' as const };
+                                        localStorage.setItem('thanaweya_card_status', JSON.stringify(next));
+                                        return next;
+                                      });
+                                      setFlashcardToast('تم التحديد كـ "متوسط الفهم".');
+                                    }}
+                                    className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs py-2 rounded-lg font-bold border border-amber-500/20 cursor-pointer transition-all"
+                                  >
+                                    متوسط 🟡
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setCardStatus(prev => {
+                                        const next = { ...prev, [activeCard.id]: 'mastered' as const };
+                                        localStorage.setItem('thanaweya_card_status', JSON.stringify(next));
+                                        return next;
+                                      });
+                                      setFlashcardToast('تم التحديد كـ "تم الإتقان بالكامل!".');
+                                    }}
+                                    className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs py-2 rounded-lg font-bold border border-emerald-500/20 cursor-pointer transition-all"
+                                  >
+                                    أتقنته! 🟢
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Eye-Care Tip Banner */}
+                              <div className="bg-amber-500/5 border border-amber-500/15 rounded-xl p-3 text-[11px] text-amber-300/90 leading-relaxed flex items-start gap-2">
+                                <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                <p>
+                                  💡 <strong>نصيحة طبية لحفظ ذاكرة البصر:</strong> عند الاستذكار المتأخر ليلاً، نوصي بتفعيل <strong>نمط الشفق الدافئ</strong> وضبط السطوع عند <strong>60% - 85%</strong> لحماية القرنية والتقليل من تشتت الانتباه الناجم عن الضوء الأزرق.
+                                </p>
+                              </div>
+
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })()}
@@ -3443,7 +4408,7 @@ export default function App() {
                 </motion.div>
               )}
 
-              {/* TAB: CUMULATIVE PERFORMANCE ANALYTICS */}
+              {/* TAB: CUMULATIVE PERFORMANCE ANALYTICS & GLOBAL BENCHMARK */}
               {activeTab === 'performance' && (
                 <motion.div
                   key="performance-analytics"
@@ -3459,9 +4424,9 @@ export default function App() {
                     <div>
                       <h3 className="text-xl font-bold text-white flex items-center gap-2">
                         <BarChart3 className="w-5 h-5 text-emerald-400" />
-                        لوحة تحليل الأداء والتحصيل الأكاديمي الشاملة (Performance Dashboard)
+                        مركز التحليل الأكاديمي الشامل والمقارنة المتقدمة
                       </h3>
-                      <p className="text-xs text-slate-400 mt-1">تتبع مؤشرات مستواك المعرفي، واكتشف نقاط القوة والضعف في كل فصل من فصول المنهج بناءً على نتائج إجاباتك.</p>
+                      <p className="text-xs text-slate-400 mt-1">تتبع مؤشرات مستواك المعرفي، وقارن نتائجك مع المعدلات الوطنية والعالمية لتحديد وترميم الفجوات المعرفية لكل فصل.</p>
                     </div>
                     
                     <div className="flex gap-2">
@@ -3481,6 +4446,47 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Performance Sub-Tab Nav Switches */}
+                  <div className="flex flex-wrap gap-2 bg-slate-950/80 p-1.5 rounded-xl border border-slate-800">
+                    <button
+                      onClick={() => setPerformanceSubTab('benchmark_gaps')}
+                      className={`flex-1 min-w-[180px] py-2.5 px-4 text-xs md:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        performanceSubTab === 'benchmark_gaps'
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-950 font-black shadow-lg shadow-emerald-500/20'
+                          : 'text-emerald-400 hover:text-emerald-300 hover:bg-slate-900/60'
+                      }`}
+                    >
+                      <Globe className="w-4 h-4" />
+                      <span>🌐 التحليل المقارن والفجوات المعرفية (Global Benchmark)</span>
+                    </button>
+
+                    <button
+                      onClick={() => setPerformanceSubTab('overview')}
+                      className={`flex-1 min-w-[180px] py-2.5 px-4 text-xs md:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        performanceSubTab === 'overview'
+                          ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-black shadow-lg shadow-cyan-500/20'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
+                      }`}
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      <span>📊 رسم البيانات والأداء الذاتي</span>
+                    </button>
+                  </div>
+
+                  {performanceSubTab === 'benchmark_gaps' ? (
+                    <GlobalBenchmarkAnalyticsTool
+                      studentPerformance={studentPerformance}
+                      allLectures={allLectures}
+                      onSelectLectureForQuiz={(lecId) => {
+                        setSelectedLectureId(lecId);
+                        setActiveTab('quiz');
+                        setQuizSubTab('practice');
+                      }}
+                      onToast={setFlashcardToast}
+                    />
+                  ) : (
+                    <div className="space-y-6">
 
                   {/* Top Stats Cards Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -3758,6 +4764,8 @@ export default function App() {
                       })()}
                     </div>
                   </div>
+                  </div>
+                  )}
                 </motion.div>
               )}
 
@@ -3769,374 +4777,8 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
-                  className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 shadow-xl backdrop-blur-sm space-y-6"
-                  dir="rtl"
                 >
-                  {/* Tab Header */}
-                  <div className="border-b border-slate-800 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                        <FileText className="w-5 h-5 text-emerald-400" />
-                        ورقة القوانين والنسب الحيوية التفاعلية
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-1 font-sans">
-                        الملخص التفاعلي الشامل لجميع قوانين علم الأحياء، الثوابت، والنسب الرياضية المقرية في المنهج. استخدم أدوات الإخفاء للاستذكار النشط وتثبيت الحفظ.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => {
-                          setGlobalFormulasHidden(prev => {
-                            const next = !prev;
-                            setIndividualFormulasHidden({});
-                            return next;
-                          });
-                        }}
-                        className={`text-xs font-bold py-1.5 px-3 rounded-lg border flex items-center gap-1.5 cursor-pointer transition-all ${
-                          globalFormulasHidden
-                            ? 'bg-amber-500/15 border-amber-500/30 text-amber-400'
-                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:text-white'
-                        }`}
-                      >
-                        {globalFormulasHidden ? (
-                          <>
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>كشف جميع القوانين والنسب</span>
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="w-3.5 h-3.5" />
-                            <span>إخفاء جميع القوانين (اختبار ذاتي)</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Active Memorization Helper Widget / Interactive Quiz Game */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    
-                    {/* Filter and Cards Area */}
-                    <div className="lg:col-span-2 space-y-4">
-                      
-                      {/* Search and Category Pill Filters */}
-                      <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-3">
-                        <div className="relative">
-                          <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-500" />
-                          <input
-                            type="text"
-                            placeholder="ابحث عن قانون، نسبة ثابتة، أو كلمة مفتاحية (مثال: Z-lines، لولب مزدوج، ليمفاوية...)"
-                            value={formulaSearch}
-                            onChange={(e) => setFormulaSearch(e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-lg pr-9 pl-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 font-sans"
-                          />
-                        </div>
-
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          <button
-                            onClick={() => setFormulaCategory('all')}
-                            className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all ${
-                              formulaCategory === 'all'
-                                ? 'bg-emerald-600 text-white shadow-md'
-                                : 'bg-slate-900 text-slate-400 border border-slate-800/80 hover:text-slate-200 hover:bg-slate-850'
-                            }`}
-                          >
-                            الكل ({biologyFormulas.length})
-                          </button>
-                          <button
-                            onClick={() => setFormulaCategory('movement')}
-                            className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all ${
-                              formulaCategory === 'movement'
-                                ? 'bg-emerald-600 text-white shadow-md'
-                                : 'bg-slate-900 text-slate-400 border border-slate-800/80 hover:text-slate-200 hover:bg-slate-850'
-                            }`}
-                          >
-                            الدعامة والحركة ({biologyFormulas.filter(f => f.category === 'movement').length})
-                          </button>
-                          <button
-                            onClick={() => setFormulaCategory('genetics')}
-                            className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all ${
-                              formulaCategory === 'genetics'
-                                ? 'bg-emerald-600 text-white shadow-md'
-                                : 'bg-slate-900 text-slate-400 border border-slate-800/80 hover:text-slate-200 hover:bg-slate-850'
-                            }`}
-                          >
-                            البيولوجيا الجزيئية ({biologyFormulas.filter(f => f.category === 'genetics').length})
-                          </button>
-                          <button
-                            onClick={() => setFormulaCategory('immunology')}
-                            className={`px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all ${
-                              formulaCategory === 'immunology'
-                                ? 'bg-emerald-600 text-white shadow-md'
-                                : 'bg-slate-900 text-slate-400 border border-slate-800/80 hover:text-slate-200 hover:bg-slate-850'
-                            }`}
-                          >
-                            المناعة وخلايا الدم ({biologyFormulas.filter(f => f.category === 'immunology').length})
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Formulas Grid */}
-                      <div className="space-y-4">
-                        {filteredFormulas.length === 0 ? (
-                          <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-8 text-center text-slate-400 font-sans">
-                            🔍 لا توجد قوانين مطابقة للبحث الحالي. جرب كلمات بحث أخرى!
-                          </div>
-                        ) : (
-                          filteredFormulas.map(formula => {
-                            const isIndividualSet = individualFormulasHidden[formula.id] !== undefined;
-                            const isHidden = isIndividualSet 
-                              ? individualFormulasHidden[formula.id] 
-                              : globalFormulasHidden;
-
-                            const toggleIndividual = (id: string) => {
-                              setIndividualFormulasHidden(prev => ({
-                                ...prev,
-                                [id]: prev[id] !== undefined ? !prev[id] : !globalFormulasHidden
-                              }));
-                            };
-
-                            return (
-                              <div
-                                key={formula.id}
-                                className="bg-slate-900/50 border border-slate-800 rounded-xl p-5 space-y-4 transition-all hover:border-slate-700/80 shadow-md relative overflow-hidden"
-                              >
-                                <div className="absolute top-0 left-0 w-24 h-24 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none rounded-br-full" />
-
-                                <div className="flex justify-between items-start gap-4">
-                                  <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                        formula.category === 'movement'
-                                          ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                          : formula.category === 'genetics'
-                                          ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
-                                          : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-                                      }`}>
-                                        {formula.category === 'movement' ? 'الدعامة والحركة' : formula.category === 'genetics' ? 'البيولوجيا الجزيئية' : 'المناعة'}
-                                      </span>
-                                      <span className="text-[10px] text-slate-500 font-mono">{formula.title}</span>
-                                    </div>
-                                    <h4 className="text-sm font-bold text-white">{formula.arabicTitle}</h4>
-                                  </div>
-
-                                  <button
-                                    onClick={() => toggleIndividual(formula.id)}
-                                    className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
-                                      isHidden
-                                        ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
-                                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900'
-                                    }`}
-                                    title={isHidden ? "إظهار تفاصيل القانون" : "إخفاء تفاصيل القانون لاختبار نفسك"}
-                                  >
-                                    {isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                  </button>
-                                </div>
-
-                                <p className="text-xs text-slate-400 leading-relaxed font-sans">{formula.description}</p>
-
-                                <div 
-                                  onClick={() => toggleIndividual(formula.id)}
-                                  className={`rounded-lg p-3.5 border transition-all text-center relative cursor-pointer group ${
-                                    isHidden
-                                      ? 'bg-slate-950/80 border-slate-850 hover:bg-slate-900 text-slate-500 border-dashed select-none'
-                                      : 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400'
-                                  }`}
-                                >
-                                  {isHidden ? (
-                                    <div className="flex flex-col items-center gap-1 font-sans">
-                                      <span className="text-xs font-bold text-amber-500 flex items-center gap-1.5">
-                                        <EyeOff className="w-3.5 h-3.5 animate-pulse" />
-                                        <span>[اضغط هنا لكشف صيغة القانون]</span>
-                                      </span>
-                                      <span className="text-[10px] text-slate-500">حاول تذكُّر المعادلة والنسبة الرياضية قبل كشفها</span>
-                                    </div>
-                                  ) : (
-                                    <div className="space-y-1">
-                                      <span className="block text-[10px] text-slate-500 mb-0.5 font-sans">صيغة القانون / العلاقة الرياضية:</span>
-                                      <span className="text-sm font-bold block leading-relaxed font-mono tracking-wide">{formula.expression}</span>
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs pt-1 font-sans">
-                                  <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800 space-y-1">
-                                    <span className="block text-slate-500 font-bold text-[10px]">النسبة أو الثابت الحرج:</span>
-                                    {isHidden ? (
-                                      <button 
-                                        onClick={(e) => { e.stopPropagation(); toggleIndividual(formula.id); }} 
-                                        className="text-[10px] font-bold text-amber-500 flex items-center gap-1 hover:underline cursor-pointer"
-                                      >
-                                        [كشف الثابت]
-                                      </button>
-                                    ) : (
-                                      <span className="font-semibold text-slate-200">{formula.constantOrRatio}</span>
-                                    )}
-                                  </div>
-
-                                  <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800 space-y-1">
-                                    <span className="block text-slate-500 font-bold text-[10px]">التوجيه الإرشادي للامتحان:</span>
-                                    <span className="text-slate-300 leading-normal">{formula.explanation}</span>
-                                  </div>
-                                </div>
-
-                                <div className="border-t border-slate-800/80 pt-3 mt-1">
-                                  <div className="bg-slate-950/30 rounded-lg p-3 space-y-2">
-                                    <div className="flex justify-between items-center text-[10px] font-sans">
-                                      <span className="font-bold text-indigo-400 flex items-center gap-1">
-                                        <Sparkles className="w-3 h-3 text-amber-400" />
-                                        تطبيق عملي ذكي (Self-Test Question):
-                                      </span>
-                                    </div>
-                                    <p className="text-[11px] text-slate-300 font-sans">{formula.exampleQuestion}</p>
-                                    
-                                    {isHidden ? (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); toggleIndividual(formula.id); }}
-                                        className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 underline cursor-pointer font-sans"
-                                      >
-                                        أظهر الحل النموذجي والتحقق 🔑
-                                      </button>
-                                    ) : (
-                                      <div className="bg-emerald-500/5 border-r-2 border-emerald-500 rounded p-2 mt-1 font-sans">
-                                        <span className="block text-[9px] text-slate-500 font-bold">الإجابة النموذجية:</span>
-                                        <p className="text-[11px] font-semibold text-emerald-400 font-sans mt-0.5">{formula.exampleAnswer}</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Interactive Memorization Quiz Sidebar Box */}
-                    <div className="space-y-4">
-                      
-                      {/* Active Challenge Card */}
-                      <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5 space-y-4 shadow-xl">
-                        <div className="flex items-center gap-2 text-white font-bold text-sm border-b border-slate-850 pb-3">
-                          <Zap className="w-4 h-4 text-amber-400 animate-pulse" />
-                          <span>تحدي الذاكرة السريع للقوانين 🎯</span>
-                        </div>
-
-                        {!activeQuizFormula ? (
-                          <div className="text-center py-6 space-y-3 font-sans">
-                            <p className="text-xs text-slate-400 leading-relaxed">
-                              اختبر حفظك لقوانين الأحياء والنسب والثوابت الذهبية! سنطرح عليك مسألة عشوائية من المنهج وعليك التفكير في القانون الصحيح وحلها ذهنياً.
-                            </p>
-                            <button
-                              onClick={handleSelectRandomFormulaQuiz}
-                              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs py-2 px-4 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 shadow-md font-sans"
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                              <span>ابدأ التحدي العشوائي الآن</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="space-y-4 font-sans">
-                            <div className="flex justify-between items-center text-[10px]">
-                              <span className="text-slate-500 font-bold uppercase">سؤال التحدي النشط:</span>
-                              <span className="text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                {activeQuizFormula.category === 'movement' ? 'الدعامة والحركة' : activeQuizFormula.category === 'genetics' ? 'البيولوجيا الجزيئية' : 'المناعة'}
-                              </span>
-                            </div>
-
-                            <div className="bg-slate-900 border border-slate-850 rounded-lg p-3.5">
-                              <p className="text-xs text-white leading-relaxed font-medium">
-                                {activeQuizFormula.exampleQuestion}
-                              </p>
-                            </div>
-
-                            <div className="space-y-2">
-                              <label className="block text-[10px] text-slate-500 font-bold">توقعك أو مسودتك للحل (اختياري):</label>
-                              <input
-                                type="text"
-                                placeholder="اكتب إجابتك أو القانون المستخدم هنا..."
-                                value={formulaQuizUserAnswer}
-                                onChange={(e) => setFormulaQuizUserAnswer(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-850 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                              />
-                            </div>
-
-                            {!showFormulaQuizAnswer ? (
-                              <button
-                                onClick={() => setShowFormulaQuizAnswer(true)}
-                                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs py-2 px-4 rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 shadow-md"
-                              >
-                                <span>كشف الإجابة النموذجية وتحقق 🔑</span>
-                              </button>
-                            ) : (
-                              <div className="space-y-3.5 bg-slate-900/60 p-3.5 rounded-lg border border-slate-850">
-                                <div className="space-y-1">
-                                  <span className="block text-[9px] text-indigo-400 font-bold uppercase">صيغة القانون المطبقة:</span>
-                                  <span className="block text-xs font-mono font-bold text-white">{activeQuizFormula.expression}</span>
-                                </div>
-
-                                <div className="space-y-1 pt-1 border-t border-slate-850">
-                                  <span className="block text-[9px] text-emerald-400 font-bold uppercase">الإجابة النموذجية المفصلة:</span>
-                                  <p className="text-xs text-emerald-300 font-semibold leading-relaxed">{activeQuizFormula.exampleAnswer}</p>
-                                </div>
-
-                                <div className="space-y-2 pt-2 border-t border-slate-850">
-                                  <span className="block text-[10px] text-slate-400 text-center font-bold">هل نجحت في الحل بشكل صحيح؟</span>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                      onClick={() => handleEvaluateFormulaQuiz(true)}
-                                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold text-xs py-1.5 px-3 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1"
-                                    >
-                                      <span>نعم، صحيحة 👍</span>
-                                    </button>
-                                    <button
-                                      onClick={() => handleEvaluateFormulaQuiz(false)}
-                                      className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 font-bold text-xs py-1.5 px-3 rounded-lg cursor-pointer transition-colors flex items-center justify-center gap-1"
-                                    >
-                                      <span>أخطأت، مراجعة 👎</span>
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="flex justify-between items-center pt-2">
-                              <button
-                                onClick={handleSelectRandomFormulaQuiz}
-                                className="text-[10px] font-bold text-slate-400 hover:text-white underline cursor-pointer"
-                              >
-                                تخطي هذا السؤال ⏭️
-                              </button>
-                              
-                              {formulaQuizScore.total > 0 && (
-                                <span className="text-[10px] font-mono text-slate-500">
-                                  الدقة: <strong className="text-slate-300">{formulaQuizScore.correct}/{formulaQuizScore.total}</strong> ({Math.round((formulaQuizScore.correct / formulaQuizScore.total) * 100)}%)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Formula stats summary box */}
-                      <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 text-[11px] text-slate-400 leading-relaxed space-y-2 font-sans">
-                        <span className="block text-xs font-bold text-white flex items-center gap-1">
-                          <Info className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>لماذا ورقة القوانين التفاعلية؟</span>
-                        </span>
-                        <p>
-                          يشتكي الكثير من طلاب الثانوية العامة من كثرة قوانين الأحياء والخلط بين حسابات المسائل في الدعامة والحركة، جينات DNA، والمناعة.
-                        </p>
-                        <p>
-                          هذا الملخص التفاعلي يجمعهم معاً بطريقة <strong>الاستدعاء النشط (Active Recall)</strong> التي تجبر ذهنك على التفكير ومحاولة تذكر الصياغة والثابت الرياضي قبل الكشف عنه، مما يضمن ثبات المعلومة في الذاكرة طويلة المدى بنسبة تفوق 150%.
-                        </p>
-                      </div>
-
-                    </div>
-
-                  </div>
+                  <FormulasSheetTool onOpenQuickModal={() => setIsFormulaModalOpen(true)} />
                 </motion.div>
               )}
 
@@ -4199,6 +4841,12 @@ export default function App() {
           handleLectureChange(lectureId);
           if (tab) setActiveTab(tab);
         }}
+      />
+
+      {/* Floating Formula Quick Reference Popup Modal */}
+      <FloatingFormulaModal
+        isOpen={isFormulaModalOpen}
+        onClose={() => setIsFormulaModalOpen(false)}
       />
     </div>
   );

@@ -16,7 +16,8 @@ import {
   Bookmark,
   Layers,
   Activity,
-  Award
+  Award,
+  Heart
 } from 'lucide-react';
 
 interface FormulasSheetToolProps {
@@ -25,9 +26,32 @@ interface FormulasSheetToolProps {
 
 export function FormulasSheetTool({ onOpenQuickModal }: FormulasSheetToolProps) {
   const [formulaSearch, setFormulaSearch] = useState<string>('');
-  const [formulaCategory, setFormulaCategory] = useState<'all' | 'movement' | 'genetics' | 'immunology'>('all');
+  const [formulaCategory, setFormulaCategory] = useState<'all' | 'favorites' | 'movement' | 'genetics' | 'immunology'>('all');
   const [globalFormulasHidden, setGlobalFormulasHidden] = useState<boolean>(false);
   const [individualFormulasHidden, setIndividualFormulasHidden] = useState<Record<string, boolean>>({});
+
+  // Favorites state persisted in localStorage
+  const [favoritedFormulaIds, setFavoritedFormulaIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('biology_favorited_formulas');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleFavorite = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setFavoritedFormulaIds(prev => {
+      const next = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id];
+      try {
+        localStorage.setItem('biology_favorited_formulas', JSON.stringify(next));
+      } catch (err) {
+        console.error(err);
+      }
+      return next;
+    });
+  };
 
   // Active quiz challenge widget state inside the formula tool
   const [activeChallengeFormula, setActiveChallengeFormula] = useState<BiologyFormula | null>(null);
@@ -37,12 +61,19 @@ export function FormulasSheetTool({ onOpenQuickModal }: FormulasSheetToolProps) 
 
   // Filter formulas
   const filteredFormulas = biologyFormulas.filter(formula => {
-    const matchesCategory = formulaCategory === 'all' || formula.category === formulaCategory;
+    const matchesCategory =
+      formulaCategory === 'all'
+        ? true
+        : formulaCategory === 'favorites'
+        ? favoritedFormulaIds.includes(formula.id)
+        : formula.category === formulaCategory;
+
     const matchesSearch =
       formula.arabicTitle.toLowerCase().includes(formulaSearch.toLowerCase()) ||
       formula.title.toLowerCase().includes(formulaSearch.toLowerCase()) ||
       formula.description.toLowerCase().includes(formulaSearch.toLowerCase()) ||
       formula.expression.toLowerCase().includes(formulaSearch.toLowerCase());
+
     return matchesCategory && matchesSearch;
   });
 
@@ -162,6 +193,17 @@ export function FormulasSheetTool({ onOpenQuickModal }: FormulasSheetToolProps) 
                 جميع القوانين ({biologyFormulas.length})
               </button>
               <button
+                onClick={() => setFormulaCategory('favorites')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold cursor-pointer transition-all flex items-center gap-1.5 ${
+                  formulaCategory === 'favorites'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20 scale-102 font-black'
+                    : 'bg-slate-900 text-rose-400 border border-rose-500/30 hover:bg-slate-850 hover:text-rose-300'
+                }`}
+              >
+                <Heart className={`w-3.5 h-3.5 ${favoritedFormulaIds.length > 0 ? 'fill-current text-rose-300' : ''}`} />
+                <span>❤️ القوانين المفضلة ({favoritedFormulaIds.length})</span>
+              </button>
+              <button
                 onClick={() => setFormulaCategory('movement')}
                 className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold cursor-pointer transition-all ${
                   formulaCategory === 'movement'
@@ -197,9 +239,29 @@ export function FormulasSheetTool({ onOpenQuickModal }: FormulasSheetToolProps) 
           {/* Formulas List Cards */}
           <div className="space-y-4">
             {filteredFormulas.length === 0 ? (
-              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-10 text-center space-y-2">
-                <p className="text-sm font-bold text-slate-400">🔍 لا توجد نتائج مطابقة لبحثك</p>
-                <p className="text-xs text-slate-500">جرب البحث بكلمات أخرى أو اختر تصفية تخصصية.</p>
+              <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-8 sm:p-12 text-center space-y-3">
+                {formulaCategory === 'favorites' ? (
+                  <>
+                    <div className="w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-1 shadow-lg shadow-rose-500/5">
+                      <Heart className="w-7 h-7" />
+                    </div>
+                    <h4 className="text-base font-black text-white">لا توجد قوانين في قائمة المفضلة بعد</h4>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                      انقر على أيقونة القلب <Heart className="w-3.5 h-3.5 text-rose-400 inline fill-current mx-0.5" /> بجوار عنوان أي قانون لتحديده كمفضل للمراجعة السريعة وحفظه هنا للوصول السريع!
+                    </p>
+                    <button
+                      onClick={() => setFormulaCategory('all')}
+                      className="mt-2 inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-850 text-rose-300 border border-rose-500/30 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    >
+                      <span>تصفح جميع القوانين لتمييز المفضلة</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-bold text-slate-400">🔍 لا توجد نتائج مطابقة لبحثك</p>
+                    <p className="text-xs text-slate-500">جرب البحث بكلمات أخرى أو اختر تصفية تخصصية.</p>
+                  </>
+                )}
               </div>
             ) : (
               filteredFormulas.map(formula => {
@@ -207,6 +269,8 @@ export function FormulasSheetTool({ onOpenQuickModal }: FormulasSheetToolProps) 
                 const isHidden = isIndividualSet
                   ? individualFormulasHidden[formula.id]
                   : globalFormulasHidden;
+
+                const isFavorited = favoritedFormulaIds.includes(formula.id);
 
                 return (
                   <motion.div
@@ -234,7 +298,28 @@ export function FormulasSheetTool({ onOpenQuickModal }: FormulasSheetToolProps) 
                           </span>
                           <span className="text-[11px] text-slate-500 font-mono dir-ltr">{formula.title}</span>
                         </div>
-                        <h4 className="text-base font-black text-white">{formula.arabicTitle}</h4>
+
+                        <div className="flex items-center gap-2.5">
+                          <h4 className="text-base font-black text-white">{formula.arabicTitle}</h4>
+                          <button
+                            onClick={(e) => toggleFavorite(formula.id, e)}
+                            className={`px-2.5 py-1 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                              isFavorited
+                                ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 shadow-sm shadow-rose-500/20 scale-102'
+                                : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/30 hover:bg-slate-850'
+                            }`}
+                            title={isFavorited ? "إزالة من القوانين المفضلة" : "إضافة إلى القوانين المفضلة للمراجعة السريعة"}
+                          >
+                            <Heart
+                              className={`w-4 h-4 transition-transform active:scale-125 ${
+                                isFavorited ? 'fill-rose-500 text-rose-500' : ''
+                              }`}
+                            />
+                            <span className="text-[11px] font-extrabold">
+                              {isFavorited ? 'مفضّل ❤️' : 'تفضيل'}
+                            </span>
+                          </button>
+                        </div>
                       </div>
 
                       <button

@@ -14,7 +14,8 @@ import {
   Zap,
   BookOpen,
   CheckCircle2,
-  Filter
+  Filter,
+  Heart
 } from 'lucide-react';
 
 interface FloatingFormulaModalProps {
@@ -29,10 +30,45 @@ export function FloatingFormulaModal({
   suggestedTopicKeyword = ''
 }: FloatingFormulaModalProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeCategory, setActiveCategory] = useState<'all' | 'movement' | 'genetics' | 'immunology'>('all');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'favorites' | 'movement' | 'genetics' | 'immunology'>('all');
   const [selectedFormulaId, setSelectedFormulaId] = useState<string | null>(null);
   const [showDiagrams, setShowDiagrams] = useState<boolean>(true);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
+
+  // Favorites state persisted in localStorage
+  const [favoritedFormulaIds, setFavoritedFormulaIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('biology_favorited_formulas');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Re-sync favorites whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      try {
+        const saved = localStorage.getItem('biology_favorited_formulas');
+        if (saved) setFavoritedFormulaIds(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [isOpen]);
+
+  const toggleFavorite = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setFavoritedFormulaIds(prev => {
+      const next = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id];
+      try {
+        localStorage.setItem('biology_favorited_formulas', JSON.stringify(next));
+      } catch (err) {
+        console.error(err);
+      }
+      return next;
+    });
+  };
 
   // Sync auto-suggested keyword when opened
   useEffect(() => {
@@ -54,12 +90,19 @@ export function FloatingFormulaModal({
 
   // Filter formulas
   const filteredFormulas = biologyFormulas.filter(formula => {
-    const matchesCategory = activeCategory === 'all' || formula.category === activeCategory;
+    const matchesCategory =
+      activeCategory === 'all'
+        ? true
+        : activeCategory === 'favorites'
+        ? favoritedFormulaIds.includes(formula.id)
+        : formula.category === activeCategory;
+
     const matchesQuery =
       formula.arabicTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
       formula.expression.toLowerCase().includes(searchQuery.toLowerCase()) ||
       formula.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       formula.constantOrRatio.toLowerCase().includes(searchQuery.toLowerCase());
+
     return matchesCategory && matchesQuery;
   });
 
@@ -178,6 +221,17 @@ export function FloatingFormulaModal({
                     الكل ({biologyFormulas.length})
                   </button>
                   <button
+                    onClick={() => setActiveCategory('favorites')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1 ${
+                      activeCategory === 'favorites'
+                        ? 'bg-rose-600 text-white shadow-md'
+                        : 'bg-slate-950 text-rose-400 border border-rose-500/30 hover:bg-slate-900'
+                    }`}
+                  >
+                    <Heart className={`w-3.5 h-3.5 ${favoritedFormulaIds.length > 0 ? 'fill-current text-rose-300' : ''}`} />
+                    <span>❤️ المفضلة ({favoritedFormulaIds.length})</span>
+                  </button>
+                  <button
                     onClick={() => setActiveCategory('movement')}
                     className={`px-2.5 py-1 rounded-lg text-xs font-extrabold whitespace-nowrap cursor-pointer transition-all ${
                       activeCategory === 'movement'
@@ -213,12 +267,21 @@ export function FloatingFormulaModal({
               {/* Main Content Area: Horizontal or List Split */}
               <div className="flex-1 overflow-y-auto space-y-3 pr-1 scrollbar-thin">
                 {filteredFormulas.length === 0 ? (
-                  <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs">
-                    🔍 لا توجد قوانين تطابقة لبحثك. جرب كلمات أخرى مثل "ساركومير" أو "تائية" أو "تشارجاف".
+                  <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-8 text-center text-slate-400 text-xs space-y-2">
+                    {activeCategory === 'favorites' ? (
+                      <>
+                        <Heart className="w-6 h-6 text-rose-400 mx-auto" />
+                        <p className="font-bold text-slate-300">لا توجد قوانين مفضلة بعد</p>
+                        <p className="text-[11px] text-slate-400">انقر على أيقونة القلب ❤️ بجوار عنوان أي قانون لإضافته لقائمة المفضلة.</p>
+                      </>
+                    ) : (
+                      <p>🔍 لا توجد قوانين مطابقة لبحثك. جرب كلمات أخرى مثل "ساركومير" أو "تائية" أو "تشارجاف".</p>
+                    )}
                   </div>
                 ) : (
                   filteredFormulas.map(formula => {
                     const isSelected = selectedFormula?.id === formula.id;
+                    const isFav = favoritedFormulaIds.includes(formula.id);
 
                     return (
                       <div
@@ -242,7 +305,18 @@ export function FloatingFormulaModal({
                             }`}>
                               {formula.category === 'movement' ? 'الدعامة والحركة' : formula.category === 'genetics' ? 'البيولوجيا الجزيئية' : 'المناعة'}
                             </span>
-                            <h4 className="text-xs font-bold text-white">{formula.arabicTitle}</h4>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs font-bold text-white">{formula.arabicTitle}</h4>
+                              <button
+                                onClick={(e) => toggleFavorite(formula.id, e)}
+                                className={`p-1 rounded transition-all cursor-pointer ${
+                                  isFav ? 'text-rose-400 hover:text-rose-300' : 'text-slate-500 hover:text-rose-400'
+                                }`}
+                                title={isFav ? "إزالة من المفضلة" : "إضافة للمفضلة"}
+                              >
+                                <Heart className={`w-3.5 h-3.5 ${isFav ? 'fill-rose-500 text-rose-500' : ''}`} />
+                              </button>
+                            </div>
                           </div>
 
                           <span className="text-[10px] text-slate-500 font-mono dir-ltr">{formula.title}</span>
