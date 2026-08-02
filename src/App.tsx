@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BookOpen, 
@@ -8,6 +8,9 @@ import {
   TrendingUp, 
   Calculator, 
   RotateCcw, 
+  Clock,
+  Play,
+  Pause,
   CheckCircle2, 
   XCircle, 
   ChevronRight, 
@@ -15,12 +18,14 @@ import {
   Compass, 
   FileText, 
   Info,
+  Lightbulb,
   Award,
   Search,
   BookMarked,
   Sparkles,
   Plus,
   RefreshCw,
+  FlipHorizontal,
   Trash2,
   BarChart3,
   Calendar,
@@ -49,7 +54,8 @@ import {
   MicOff,
   Volume2,
   Loader2,
-  BrainCircuit
+  BrainCircuit,
+  FileCheck2
 } from 'lucide-react';
 import { allLectures } from './data';
 import { biologyFlashcards, Flashcard } from './data/flashcards';
@@ -62,12 +68,14 @@ import { BiologyChatbotModal } from './components/BiologyChatbotModal';
 import { ConceptMapTool } from './components/ConceptMapTool';
 import { GuidanceModel2026Tool } from './components/GuidanceModel2026Tool';
 import { SpeedQuizTool } from './components/SpeedQuizTool';
+import { VisualExplanationComponent } from './components/VisualExplanationComponent';
 import { MistakeBankTool } from './components/MistakeBankTool';
 import { MockExamTool } from './components/MockExamTool';
 import { PastExamsEgyptTool } from './components/PastExamsEgyptTool';
 import { GlobalBenchmarkAnalyticsTool } from './components/GlobalBenchmarkAnalyticsTool';
 import { FormulasSheetTool } from './components/FormulasSheetTool';
 import { FloatingFormulaModal } from './components/FloatingFormulaModal';
+import { BubbleSheetExamTool } from './components/BubbleSheetExamTool';
 
 export default function App() {
   // Theme Toggle State - Default is Elegant Dark
@@ -398,13 +406,15 @@ export default function App() {
   }, [isFocusMode]);
 
   const [quizMode, setQuizMode] = useState<'built-in' | 'extended'>('built-in');
-  const [quizSubTab, setQuizSubTab] = useState<'practice' | 'speed_quiz' | 'mistake_bank' | 'mock_exam'>('practice');
+  const [quizSubTab, setQuizSubTab] = useState<'practice' | 'speed_quiz' | 'mistake_bank' | 'mock_exam' | 'bubble_sheet'>('practice');
   const [performanceSubTab, setPerformanceSubTab] = useState<'benchmark_gaps' | 'overview'>('benchmark_gaps');
-  const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'easy' | 'medium' | 'high'>('all');
+  const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'easy' | 'medium' | 'high' | 'expert'>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'past_exams' | 'expectations_2026' | 'conceptual' | 'calculations'>('all');
   const [generationLoading, setGenerationLoading] = useState<boolean>(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
-  const [generatorDifficulty, setGeneratorDifficulty] = useState<'easy' | 'medium' | 'high'>('medium');
+  const [generatorDifficulty, setGeneratorDifficulty] = useState<'easy' | 'medium' | 'high' | 'expert'>('medium');
+  const [flashcardDifficultyFilter, setFlashcardDifficultyFilter] = useState<'all' | 'easy' | 'medium' | 'high' | 'expert'>('all');
+  const [showActiveRecallInfoModal, setShowActiveRecallInfoModal] = useState<boolean>(false);
 
   // Combine built-in with fallbacks and custom questions for practice
   const extendedQuestionPool = useMemo(() => {
@@ -433,7 +443,9 @@ export default function App() {
 
       // 1. Difficulty Filter
       let passDiff = true;
-      if (difficultyFilter === 'high') {
+      if (difficultyFilter === 'expert') {
+        passDiff = diffStr === 'expert' || sourceStr.includes('خبير') || sourceStr.includes('عليا جداً');
+      } else if (difficultyFilter === 'high') {
         passDiff = diffStr === 'high' || sourceStr.includes('عليا') || sourceStr.includes('صعبة');
       } else if (difficultyFilter === 'medium') {
         passDiff = diffStr === 'medium' || sourceStr.includes('متوسط');
@@ -505,7 +517,7 @@ export default function App() {
   };
 
   // AI Dynamic Question Generator Trigger
-  const generateNewQuestions = async (difficulty: 'easy' | 'medium' | 'high') => {
+  const generateNewQuestions = async (difficulty: 'easy' | 'medium' | 'high' | 'expert') => {
     setGenerationLoading(true);
     setGenerationError(null);
     try {
@@ -534,7 +546,7 @@ export default function App() {
         setIsQuizSubmitted(false);
         setQuizScore(0);
         setQuizAnswersHistory([]);
-        setFlashcardToast(`🎉 تم توليد 5 أسئلة ذكية جديدة بنجاح في مستوى الصعوبة: ${difficulty === 'high' ? 'مستويات عليا' : difficulty === 'medium' ? 'متوسط' : 'سهل'}!`);
+        setFlashcardToast(`🎉 تم توليد 5 أسئلة ذكية جديدة بنجاح في مستوى الصعوبة: ${difficulty === 'expert' ? 'مستوى خبير 🔥' : difficulty === 'high' ? 'مستويات عليا' : difficulty === 'medium' ? 'متوسط' : 'سهل'}!`);
       } else {
         throw new Error('تنسيق البيانات المستلمة غير صالح.');
       }
@@ -548,7 +560,8 @@ export default function App() {
         const localSimulated = fallbacksForLecture.map(q => ({
           ...q,
           id: `${q.id}_sim_${Math.random().toString(36).substring(2, 7)}`,
-          sourceYear: `مولد محلي - مستوى ${difficulty === 'high' ? 'مستويات عليا' : difficulty === 'medium' ? 'متوسط' : 'سهل'}`
+          complexity: difficulty,
+          sourceYear: `مولد محلي - مستوى ${difficulty === 'expert' ? 'مستوى خبير 🔥' : difficulty === 'high' ? 'مستويات عليا' : difficulty === 'medium' ? 'متوسط' : 'سهل'}`
         }));
         handleAddCustomQuestions(activeLecture.id, localSimulated);
         setQuizMode('extended');
@@ -570,6 +583,105 @@ export default function App() {
   // Active Recall States & Dark Study Mode controls
   const [recallCardIndex, setRecallCardIndex] = useState<number>(0);
   const [isCardFlipped, setIsCardFlipped] = useState<boolean>(false);
+  const [showFlashcardHint, setShowFlashcardHint] = useState<boolean>(false);
+  const [recallTimerMax, setRecallTimerMax] = useState<number>(15);
+  const [recallTimeLeft, setRecallTimeLeft] = useState<number>(15);
+  const [isRecallTimerPaused, setIsRecallTimerPaused] = useState<boolean>(false);
+
+  // Reset countdown & hint whenever active card index, lecture, difficulty filter, or timer max duration changes
+  useEffect(() => {
+    setRecallTimeLeft(recallTimerMax);
+    setIsCardFlipped(false);
+    setShowFlashcardHint(false);
+  }, [recallCardIndex, selectedLectureId, flashcardDifficultyFilter, recallTimerMax]);
+
+  // Countdown timer tick effect
+  useEffect(() => {
+    if (isCardFlipped || isRecallTimerPaused || recallTimeLeft <= 0) return;
+
+    const timer = setInterval(() => {
+      setRecallTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isCardFlipped, isRecallTimerPaused, recallTimeLeft]);
+
+  // Paper flip sound effect synthesizer using Web Audio API
+  const playPaperFlipSound = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const now = ctx.currentTime;
+      
+      // 1. Crisp paper rustle noise
+      const bufferSize = Math.floor(ctx.sampleRate * 0.12);
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.8;
+      }
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1400, now);
+      filter.frequency.exponentialRampToValueAtTime(3600, now + 0.08);
+      filter.Q.setValueAtTime(1.8, now);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+      // 2. Low-frequency tactile card pop
+      const osc = ctx.createOscillator();
+      const oscGain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(70, now + 0.08);
+
+      oscGain.gain.setValueAtTime(0.25, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.connect(oscGain);
+      oscGain.connect(ctx.destination);
+
+      noise.start(now);
+      noise.stop(now + 0.12);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } catch {
+      // Audio safeguard
+    }
+  }, []);
+
+  const handleCardFlip = useCallback((e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    setIsCardFlipped(prev => {
+      playPaperFlipSound();
+      return !prev;
+    });
+  }, [playPaperFlipSound]);
+
   const [cardStatus, setCardStatus] = useState<Record<string, 'unseen' | 'review' | 'mastered'>>(() => {
     try {
       const saved = localStorage.getItem('thanaweya_card_status');
@@ -591,6 +703,7 @@ export default function App() {
   const [darkStudyTheme, setDarkStudyTheme] = useState<'standard' | 'oled' | 'warm' | 'emerald'>('oled');
   const [cardBrightness, setCardBrightness] = useState<number>(85);
   const [tiltIntensity, setTiltIntensity] = useState<number>(100);
+  const [zDepthShadow, setZDepthShadow] = useState<number>(50);
 
   // Custom AI Generated Flashcards
   const [customFlashcards, setCustomFlashcards] = useState<Flashcard[]>(() => {
@@ -657,8 +770,12 @@ export default function App() {
   const currentFlashcards = useMemo(() => {
     const builtIn = biologyFlashcards.filter(fc => fc.lectureId === selectedLectureId);
     const custom = customFlashcards.filter(fc => fc.lectureId === selectedLectureId);
-    return [...builtIn, ...custom];
-  }, [selectedLectureId, customFlashcards]);
+    let allCards = [...builtIn, ...custom];
+    if (flashcardDifficultyFilter !== 'all') {
+      allCards = allCards.filter(fc => fc.difficulty === flashcardDifficultyFilter);
+    }
+    return allCards;
+  }, [selectedLectureId, customFlashcards, flashcardDifficultyFilter]);
 
   // Study Planner states
   const [examDate, setExamDate] = useState<string>(() => {
@@ -1555,6 +1672,25 @@ export default function App() {
                   <span className="text-[10px] bg-gradient-to-l from-amber-500 to-orange-500 text-slate-950 px-2 py-0.5 rounded font-black">3س 🏛️</span>
                 </button>
 
+                {/* Bubble Sheet Exam Button */}
+                <button
+                  onClick={() => {
+                    setActiveTab('quiz');
+                    setQuizSubTab('bubble_sheet');
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-semibold transition-all text-right cursor-pointer ${
+                    activeTab === 'quiz' && quizSubTab === 'bubble_sheet'
+                      ? 'bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-indigo-500/20 text-amber-300 border-r-4 border-amber-500 font-bold shadow-lg'
+                      : 'text-amber-400/90 hover:bg-slate-800/60 hover:text-amber-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <FileCheck2 className={`w-4 h-4 ${activeTab === 'quiz' && quizSubTab === 'bubble_sheet' ? 'text-amber-400' : 'text-amber-400/80'}`} />
+                    <span>امتحانات البابل شيت الرسمية</span>
+                  </div>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">تظليل 📝</span>
+                </button>
+
                 {/* Mistake Bank Tool Button */}
                 <button
                   onClick={() => {
@@ -1777,7 +1913,7 @@ export default function App() {
                       </div>
 
                       {/* Main Toggle & Options Buttons */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => {
                             setIsReadingMode(prev => !prev);
@@ -1962,7 +2098,7 @@ export default function App() {
                         }`}
                       >
                         <h3 
-                          className={`font-bold border-b pb-3 mb-4 flex items-center gap-3 transition-all ${
+                          className={`font-bold border-b pb-3 mb-4 flex items-center justify-between gap-3 transition-all ${
                             isReadingMode 
                               ? `${readingThemeStyles.headerBorder} ${readingThemeStyles.titleColor}` 
                               : 'text-xl text-white border-slate-800'
@@ -1971,12 +2107,14 @@ export default function App() {
                             fontSize: isReadingMode ? `${Math.round(readingFontSize * 1.2)}px` : undefined
                           }}
                         >
-                          <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border shrink-0 ${
-                            isReadingMode ? readingThemeStyles.badgeBg : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                          }`}>
-                            {index + 1}
-                          </span>
-                          {concept.arabicTitle}
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border shrink-0 ${
+                              isReadingMode ? readingThemeStyles.badgeBg : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                            }`}>
+                              {index + 1}
+                            </span>
+                            <span>{concept.arabicTitle}</span>
+                          </div>
                         </h3>
                         
                         {/* Detailed explanatory text */}
@@ -2368,114 +2506,9 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Universal Visual Tool Renders */}
+                  {/* Universal Visual Tool Renders with Interactive Label Mode */}
                   {activeLecture.visualTools.map((tool) => (
-                    <div 
-                      key={tool.id} 
-                      className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 shadow-xl backdrop-blur-sm space-y-6"
-                    >
-                      <div className="border-b border-slate-800 pb-3">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                          <Sliders className="w-5 h-5 text-emerald-400" />
-                          {tool.title}
-                        </h3>
-                        <p className="text-xs text-slate-400 mt-1">النمذجة البصرية لتسهيل الفهم وحفظ التفاعلات الحيوية.</p>
-                      </div>
-
-                      {/* Display Generated Realistic Image */}
-                      {tool.imageUrl && (
-                        <div className="space-y-3">
-                          <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            المجسم ثلاثي الأبعاد الواقعي (Realistic 3D Medical Illustration):
-                          </h4>
-                          <div className="relative group overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-xl shadow-slate-950/50">
-                            <img 
-                              src={tool.imageUrl} 
-                              alt={tool.title} 
-                              referrerPolicy="no-referrer"
-                              className="w-full max-h-[380px] object-cover rounded-xl transition-all duration-500 group-hover:scale-[1.01] filter brightness-95 group-hover:brightness-100"
-                            />
-                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-4">
-                              <p className="text-[11px] text-slate-300 font-medium">مجسم مجهري دقيق ومحاكاة نسيجية عالية الجودة</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Display ASCII Art if present */}
-                      {tool.asciiArt && (
-                        <div className="bg-slate-950 rounded-lg p-4 font-mono text-xs text-emerald-400 overflow-x-auto border border-slate-850" dir="ltr">
-                          <pre>{tool.asciiArt}</pre>
-                        </div>
-                      )}
-
-                      {/* Display Graphic Storyboard for designers/generation */}
-                      <div className="bg-slate-950/40 border border-emerald-950/20 rounded-lg p-5">
-                        <h4 className="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-1.5 font-sans">
-                          <Info className="w-4 h-4 text-emerald-400" />
-                          لوحة التصميم الإيضاحي ومكونات الرسمة (Storyboard Graphic):
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-300">
-                          <div className="space-y-2">
-                            <p><strong>الفكرة الرسومية:</strong> {tool.storyboard.graphicIdea}</p>
-                            <p><strong>الألوان المحددة:</strong> {tool.storyboard.colors.join(' ، ')}</p>
-                          </div>
-                          <div className="space-y-2">
-                            <p><strong>عناصر اللوحة:</strong></p>
-                            <ul className="list-disc pr-4 space-y-1">
-                              {tool.storyboard.elements.map((el, idx) => <li key={idx}>{el}</li>)}
-                            </ul>
-                          </div>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-3 border-t border-slate-800/80 pt-2 italic">
-                          * تخطيط المشهد: {tool.storyboard.layoutDescription}
-                        </p>
-                      </div>
-
-                      {/* Display Pathway Steps if available */}
-                      {tool.pathwaySteps && (
-                        <div className="space-y-3">
-                          <h4 className="text-sm font-bold text-white">خطوات وتتابع المسار الحيوي (Biological Pathway):</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                            {tool.pathwaySteps.map((step) => (
-                              <div key={step.stepNumber} className="bg-slate-950/50 border border-slate-800 p-3 rounded-lg">
-                                <div className="text-emerald-400 font-bold text-xs mb-1 font-mono">الخطوة {step.stepNumber}</div>
-                                <h5 className="font-bold text-white text-xs mb-1">{step.title}</h5>
-                                <p className="text-[10px] text-slate-400 leading-relaxed">{step.description}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Comparison Table if present */}
-                      {tool.comparison && (
-                        <div className="border border-slate-800 rounded-lg overflow-hidden">
-                          <div className="bg-slate-950/50 p-3 border-b border-slate-850 font-bold text-sm text-slate-200">
-                            {tool.comparison.title}
-                          </div>
-                          <table className="w-full text-xs text-right text-slate-300">
-                            <thead className="bg-slate-900 text-slate-300 font-bold border-b border-slate-800">
-                              <tr>
-                                <th className="p-3">وجه المقارنة (Aspect)</th>
-                                <th className="p-3">{tool.comparison.headerA}</th>
-                                <th className="p-3">{tool.comparison.headerB}</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-850">
-                              {tool.comparison.rows.map((row, idx) => (
-                                <tr key={idx} className="hover:bg-slate-800/40">
-                                  <td className="p-3 font-semibold text-white border-l border-slate-850">{row.aspect}</td>
-                                  <td className="p-3 border-l border-slate-850">{row.entityA}</td>
-                                  <td className="p-3">{row.entityB}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
+                    <VisualExplanationComponent key={tool.id} tool={tool} />
                   ))}
                 </motion.div>
               )}
@@ -2681,7 +2714,19 @@ export default function App() {
                       }`}
                     >
                       <ShieldCheck className="w-4 h-4 text-amber-300" />
-                      <span>🏛️ اختبار محاكاة شامل (50 سؤال)</span>
+                      <span>🏛️ اختبار محاكاة (50 سؤال)</span>
+                    </button>
+
+                    <button
+                      onClick={() => setQuizSubTab('bubble_sheet')}
+                      className={`flex-1 min-w-[140px] py-2.5 px-3 text-xs md:text-sm font-bold rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        quizSubTab === 'bubble_sheet'
+                          ? 'bg-gradient-to-l from-amber-500 to-indigo-600 text-white shadow-md shadow-amber-500/20 font-extrabold'
+                          : 'text-amber-400/90 hover:text-amber-300 hover:bg-slate-900/50'
+                      }`}
+                    >
+                      <FileCheck2 className="w-4 h-4 text-amber-300" />
+                      <span>📝 امتحانات البابل شيت</span>
                     </button>
 
                     <button
@@ -2697,7 +2742,14 @@ export default function App() {
                     </button>
                   </div>
 
-                  {quizSubTab === 'mock_exam' ? (
+                  {quizSubTab === 'bubble_sheet' ? (
+                    <BubbleSheetExamTool
+                      allLectures={allLectures}
+                      onToast={setFlashcardToast}
+                      isFocusMode={isFocusMode}
+                      onToggleFocusMode={() => setIsFocusMode(prev => !prev)}
+                    />
+                  ) : quizSubTab === 'mock_exam' ? (
                     <MockExamTool
                       allLectures={allLectures}
                       onToast={setFlashcardToast}
@@ -2823,6 +2875,7 @@ export default function App() {
                             <option value="easy">مستوى سهل (مباشر)</option>
                             <option value="medium">مستوى متوسط (استنتاجي)</option>
                             <option value="high">مستويات عليا (تفكير مركب)</option>
+                            <option value="expert">🔥 مستوى خبير (ربط ومستويات معقدة جداً)</option>
                           </select>
 
                           {/* Trigger Generation Button */}
@@ -2890,6 +2943,7 @@ export default function App() {
                           { id: 'easy', label: '🟢 مستوى سهل (مباشر وفهم)' },
                           { id: 'medium', label: '🟡 مستوى متوسط (تطبيق واستنتاج)' },
                           { id: 'high', label: '🔴 مستويات تفكير عليا (ربط وتركيب)' },
+                          { id: 'expert', label: '🔥 مستوى خبير (ربط ومستويات خبيرة)' },
                         ].map(diff => (
                           <button
                             key={diff.id}
@@ -2910,6 +2964,7 @@ export default function App() {
                                 const diffStr = q.complexity?.toLowerCase() || '';
                                 const sourceStr = q.sourceYear?.toLowerCase() || '';
                                 if (diff.id === 'all') return true;
+                                if (diff.id === 'expert') return diffStr === 'expert' || sourceStr.includes('خبير') || sourceStr.includes('عليا جداً');
                                 if (diff.id === 'high') return diffStr === 'high' || sourceStr.includes('عليا') || sourceStr.includes('صعبة');
                                 if (diff.id === 'medium') return diffStr === 'medium' || sourceStr.includes('متوسط');
                                 if (diff.id === 'easy') return diffStr === 'easy' || sourceStr.includes('سهل');
@@ -3332,69 +3387,119 @@ export default function App() {
                         )}
 
                         {/* Top Control Bar Header */}
-                        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-slate-800/80 pb-5 mb-6 relative z-10">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                                <Layers className="w-5 h-5 text-emerald-400" />
-                                بطاقات الاستذكار النشط (Active Recall Flashcards)
-                              </h3>
-                              {darkStudyMode && (
-                                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
-                                  <Moon className="w-3 h-3 text-amber-400" />
-                                  <span>نمط المذاكرة المظلمة مفعل</span>
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-slate-400">
-                              تقنية التكرار المتباعد لترسيخ المفاهيم المعقدة، مع حماية عينيك وتقليل الإجهاد في الجلسات الطويلة.
-                            </p>
-                          </div>
+                        <div className="flex flex-col border-b border-slate-800/80 pb-5 mb-6 relative z-10 gap-4">
+                          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                                  <Layers className="w-5 h-5 text-emerald-400" />
+                                  بطاقات الاستذكار النشط (Active Recall Flashcards)
+                                </h3>
 
-                          {/* Dark Study Mode Toggle Switch */}
-                          <div className="flex items-center gap-3 bg-slate-950/70 p-2 rounded-xl border border-slate-800/80 self-stretch lg:self-auto justify-between lg:justify-start">
-                            <div className="flex items-center gap-2">
+                                {/* Active Recall Tooltip Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => setShowActiveRecallInfoModal(true)}
+                                  title="اضغط لمعرفة فوائد تقنية الاستذكار النشط في تقوية الذاكرة"
+                                  className="px-2.5 py-1 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-sm"
+                                >
+                                  <HelpCircle className="w-4 h-4 text-emerald-400 animate-pulse" />
+                                  <span>ما هي تقنية الاستذكار النشط؟</span>
+                                </button>
+
+                                {darkStudyMode && (
+                                  <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
+                                    <Moon className="w-3 h-3 text-amber-400" />
+                                    <span>نمط المذاكرة المظلمة مفعل</span>
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-400">
+                                تقنية التكرار المتباعد واسترجاع المعلومات لترسيخ المفاهيم المعقدة، مع تصفية البطاقات وحماية عينيك.
+                              </p>
+                            </div>
+
+                            {/* Dark Study Mode Toggle Switch */}
+                            <div className="flex items-center gap-3 bg-slate-950/70 p-2 rounded-xl border border-slate-800/80 self-stretch lg:self-auto justify-between lg:justify-start">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setDarkStudyMode(!darkStudyMode);
+                                    setFlashcardToast(
+                                      !darkStudyMode 
+                                        ? '🌙 تم تفعيل نمط المذاكرة المظلمة لحماية العينين!' 
+                                        : '☀️ تم العودة للنمط القياسي.'
+                                    );
+                                  }}
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                                    darkStudyMode ? 'bg-amber-500' : 'bg-slate-700'
+                                  }`}
+                                  title="تشغيل / إيقاف نمط المذاكرة المظلمة"
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                      darkStudyMode ? 'translate-x-1' : 'translate-x-6'
+                                    }`}
+                                  />
+                                </button>
+                                <span className="text-xs font-bold text-slate-200 flex items-center gap-1">
+                                  <Moon className={`w-3.5 h-3.5 ${darkStudyMode ? 'text-amber-400' : 'text-slate-400'}`} />
+                                  <span>المذاكرة المظلمة (حماية العين)</span>
+                                </span>
+                              </div>
+
+                              {/* Reset Button */}
                               <button
                                 onClick={() => {
-                                  setDarkStudyMode(!darkStudyMode);
-                                  setFlashcardToast(
-                                    !darkStudyMode 
-                                      ? '🌙 تم تفعيل نمط المذاكرة المظلمة لحماية العينين!' 
-                                      : '☀️ تم العودة للنمط القياسي.'
-                                  );
+                                  setDarkStudyMode(true);
+                                  setDarkStudyTheme('oled');
+                                  setCardBrightness(85);
+                                  setTiltIntensity(100);
+                                  setZDepthShadow(50);
+                                  setFlashcardToast('🔄 تم إعادة ضبط جميع إعدادات العرض والحركة (85% سطوع / 100% ميل 3D / 50% Z-Depth).');
                                 }}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
-                                  darkStudyMode ? 'bg-amber-500' : 'bg-slate-700'
-                                }`}
-                                title="تشغيل / إيقاف نمط المذاكرة المظلمة"
+                                className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 px-2 py-1 bg-slate-900 rounded border border-slate-800 transition-all cursor-pointer"
+                                title="إعادة ضبط إعدادات العرض"
                               >
-                                <span
-                                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                                    darkStudyMode ? 'translate-x-1' : 'translate-x-6'
-                                  }`}
-                                />
+                                <RotateCcw className="w-3 h-3 text-slate-400" />
+                                <span>إعادة ضبط</span>
                               </button>
-                              <span className="text-xs font-bold text-slate-200 flex items-center gap-1">
-                                <Moon className={`w-3.5 h-3.5 ${darkStudyMode ? 'text-amber-400' : 'text-slate-400'}`} />
-                                <span>المذاكرة المظلمة (حماية العين)</span>
-                              </span>
                             </div>
+                          </div>
 
-                            {/* Reset Button */}
-                            <button
-                              onClick={() => {
-                                setDarkStudyMode(true);
-                                setDarkStudyTheme('oled');
-                                setCardBrightness(85);
-                                setTiltIntensity(100);
-                                setFlashcardToast('🔄 تم إعادة ضبط جميع إعدادات العرض والحركة (85% سطوع / 100% ميل 3D).');
-                              }}
-                              className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 px-2 py-1 bg-slate-900 rounded border border-slate-800 transition-all cursor-pointer"
-                              title="إعادة ضبط إعدادات العرض"
-                            >
-                              <RotateCcw className="w-3 h-3 text-slate-400" />
-                              <span>إعادة ضبط</span>
-                            </button>
+                          {/* Flashcards Difficulty Filter Toolbar */}
+                          <div className="pt-3 border-t border-slate-800/60 flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] text-slate-400 font-bold flex items-center gap-1">
+                              <Filter className="w-3.5 h-3.5 text-amber-400" />
+                              <span>تصفية بطاقات الاستذكار حسب مستوى الصعوبة:</span>
+                            </span>
+                            {[
+                              { id: 'all', label: '🗂️ جميع البطاقات' },
+                              { id: 'easy', label: '🟢 سهل' },
+                              { id: 'medium', label: '🟡 متوسط' },
+                              { id: 'high', label: '🔴 عليا' },
+                              { id: 'expert', label: '🔥 خبير' },
+                            ].map(filter => (
+                              <button
+                                key={filter.id}
+                                onClick={() => {
+                                  setFlashcardDifficultyFilter(filter.id as any);
+                                  setRecallCardIndex(0);
+                                  setIsCardFlipped(false);
+                                }}
+                                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                                  flashcardDifficultyFilter === filter.id
+                                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-sm'
+                                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+                                }`}
+                              >
+                                {filter.label} ({
+                                  biologyFlashcards.filter(fc => fc.lectureId === selectedLectureId)
+                                    .concat(customFlashcards.filter(fc => fc.lectureId === selectedLectureId))
+                                    .filter(fc => filter.id === 'all' || fc.difficulty === filter.id).length
+                                })
+                              </button>
+                            ))}
                           </div>
                         </div>
 
@@ -3558,6 +3663,93 @@ export default function App() {
                               </div>
                             </div>
 
+                            {/* 3D Z-Depth & Shadow Intensity Slider (.preserve-3d visual feedback) */}
+                            <div className="md:col-span-6 lg:col-span-4 space-y-2 border-t md:border-t-0 border-r-0 lg:border-r border-slate-800 pt-3 md:pt-0 lg:pr-4">
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                                  <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                                  عمق الظل Z-Depth (Card Elevation):
+                                </span>
+                                <span className="font-mono font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                                  {zDepthShadow}%
+                                </span>
+                              </div>
+
+                              {/* Z-Depth Range Slider */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-500 shrink-0">مسطح</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="150"
+                                  step="5"
+                                  value={zDepthShadow}
+                                  onChange={(e) => setZDepthShadow(Number(e.target.value))}
+                                  className="w-full accent-indigo-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <span className="text-[10px] font-bold text-indigo-400 shrink-0">بارز Z</span>
+                              </div>
+
+                              {/* Quick Z-Depth Presets */}
+                              <div className="flex items-center justify-between text-[10px] gap-1 pt-1">
+                                <button
+                                  onClick={() => {
+                                    setZDepthShadow(0);
+                                    setFlashcardToast('🌑 تم تصفير عمق الظل Z-Depth (سطح مسطح).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    zDepthShadow === 0
+                                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  0% مسطح
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setZDepthShadow(50);
+                                    setFlashcardToast('✨ تم ضبط عمق Z-Depth على 50% (عمق متوسط).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    zDepthShadow === 50
+                                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  50% متوسط
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setZDepthShadow(100);
+                                    setFlashcardToast('🎯 تم ضبط عمق Z-Depth على 100% (بارز ثلاثي الأبعاد).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    zDepthShadow === 100
+                                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  100% بارز
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setZDepthShadow(150);
+                                    setFlashcardToast('🚀 تم ضبط عمق Z-Depth على 150% (ارتفاع Z عالي).');
+                                  }}
+                                  className={`px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                                    zDepthShadow === 150
+                                      ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 font-bold'
+                                      : 'bg-slate-900 text-slate-400 hover:text-white border-slate-800'
+                                  }`}
+                                >
+                                  150% عميق
+                                </button>
+                              </div>
+                            </div>
+
                             {/* 3D Tilt Motion Intensity Slider (.preserve-3d) */}
                             <div className="md:col-span-6 lg:col-span-4 space-y-2 border-t md:border-t-0 border-r-0 lg:border-r border-slate-800 pt-3 md:pt-0 lg:pr-4">
                               <div className="flex justify-between items-center text-[11px]">
@@ -3662,6 +3854,29 @@ export default function App() {
                           return (
                             <div className="max-w-lg mx-auto space-y-6 relative z-10">
                               
+                              {/* Active Recall Timer Configuration Bar */}
+                              <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs" dir="rtl">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="w-4 h-4 text-emerald-400" />
+                                  <span className="font-bold text-slate-200">مؤقت تحفيز سرعة الاسترجاع:</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {[10, 15, 30, 60].map(sec => (
+                                    <button
+                                      key={sec}
+                                      onClick={() => setRecallTimerMax(sec)}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                                        recallTimerMax === sec
+                                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm'
+                                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                                      }`}
+                                    >
+                                      {sec} ثانية
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
                               {/* Statistics Summary Bar */}
                               <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5 space-y-2 text-xs text-right" dir="rtl">
                                 <div className="flex justify-between items-center text-[11px] text-slate-400 font-bold">
@@ -3730,13 +3945,24 @@ export default function App() {
                                   <motion.div 
                                     key={activeCard.id}
                                     initial={{ opacity: 0, x: 24, scale: 0.97 }}
-                                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                                    animate={{ 
+                                      opacity: 1, 
+                                      x: 0, 
+                                      scale: 1,
+                                      rotateY: isCardFlipped ? 180 : 0
+                                    }}
                                     exit={{ opacity: 0, x: -24, scale: 0.97 }}
-                                    transition={{ duration: 0.2, ease: "easeInOut" }}
-                                    onClick={() => setIsCardFlipped(!isCardFlipped)}
-                                    className={`h-72 cursor-pointer relative preserve-3d ${isCardFlipped ? 'flipped' : 'unflipped'}`}
+                                    transition={{ duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+                                    onClick={handleCardFlip}
+                                    className={`h-72 cursor-pointer relative preserve-3d group ${isCardFlipped ? 'flipped' : 'unflipped'}`}
                                     style={{
+                                      transformStyle: 'preserve-3d',
+                                      WebkitTransformStyle: 'preserve-3d',
                                       '--tilt-factor': tiltIntensity / 100,
+                                      '--z-depth-factor': zDepthShadow / 100,
+                                      boxShadow: zDepthShadow > 0
+                                        ? `0 ${Math.round(zDepthShadow * 0.35)}px ${Math.round(zDepthShadow * 0.75)}px -${Math.round(zDepthShadow * 0.1)}px var(--card-glow-color, rgba(16, 185, 129, ${0.15 + (zDepthShadow / 100) * 0.35})), 0 0 ${Math.round(zDepthShadow * 0.5)}px rgba(0,0,0, ${0.2 + (zDepthShadow / 100) * 0.4})`
+                                        : undefined,
                                       '--card-glow-color': (() => {
                                         const cat = activeCard.category || '';
                                         if (cat.includes('مخصصة')) return 'rgba(245, 158, 11, 0.45)';
@@ -3754,65 +3980,200 @@ export default function App() {
                                   >
                                     {/* Front Side (Question) */}
                                   <div 
-                                    className={`absolute inset-0 border-2 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backface-hidden ${themeStyles.cardFrontBg} ${
-                                      isCardFlipped ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
-                                    } transition-opacity duration-300`}
+                                    className={`absolute inset-0 border-2 rounded-2xl p-5 flex flex-col justify-between shadow-2xl card-face-front transition-opacity duration-300 ${themeStyles.cardFrontBg}`}
                                     style={{ 
                                       backfaceVisibility: 'hidden',
-                                      WebkitBackfaceVisibility: 'hidden' 
+                                      WebkitBackfaceVisibility: 'hidden',
+                                      transform: 'rotateY(0deg)',
+                                      WebkitTransform: 'rotateY(0deg)',
+                                      transformStyle: 'preserve-3d',
+                                      WebkitTransformStyle: 'preserve-3d',
+                                      opacity: isCardFlipped ? 0 : 1,
+                                      zIndex: isCardFlipped ? 0 : 10,
+                                      pointerEvents: isCardFlipped ? 'none' : 'auto'
                                     }}
                                   >
-                                    <div className="flex justify-between items-center w-full">
-                                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
-                                        سؤال - {activeCard.category}
-                                      </span>
-                                      {(() => {
-                                        const status = cardStatus[activeCard.id] || 'unseen';
-                                        if (status === 'mastered') {
-                                          return (
-                                            <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/20 font-bold flex items-center gap-1">
-                                              <span>متقن</span>
-                                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                                            </span>
-                                          );
-                                        }
-                                        if (status === 'review') {
-                                          return (
-                                            <span className="bg-rose-500/10 text-rose-400 text-[10px] px-2 py-0.5 rounded border border-rose-500/20 font-bold flex items-center gap-1">
-                                              <span>مراجعة</span>
-                                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
-                                            </span>
-                                          );
-                                        }
-                                        return (
-                                          <span className="bg-slate-500/10 text-slate-400 text-[10px] px-2 py-0.5 rounded border border-slate-500/20 font-bold flex items-center gap-1">
-                                            <span>جديد</span>
-                                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                    <div className="flex justify-between items-center w-full gap-2">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
+                                          سؤال - {activeCard.category}
+                                        </span>
+                                        {activeCard.difficulty === 'expert' && (
+                                          <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] px-2 py-0.5 rounded-full font-extrabold flex items-center gap-1 animate-pulse">
+                                            🔥 خبير
                                           </span>
-                                        );
-                                      })()}
+                                        )}
+                                        {activeCard.difficulty === 'high' && (
+                                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                            🔴 عليا
+                                          </span>
+                                        )}
+                                        {activeCard.difficulty === 'medium' && (
+                                          <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                            🟡 متوسط
+                                          </span>
+                                        )}
+                                        {activeCard.difficulty === 'easy' && (
+                                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                            🟢 سهل
+                                          </span>
+                                        )}
+
+                                        {/* Hint (تلميح) Button */}
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowFlashcardHint(prev => !prev);
+                                          }}
+                                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm cursor-pointer border transition-all ${
+                                            showFlashcardHint 
+                                              ? 'bg-amber-400 text-slate-950 border-amber-300 font-extrabold scale-105 shadow-amber-500/30' 
+                                              : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+                                          }`}
+                                          title="تلميح مساعدة للاسترجاع المفاهيمي دون كشف الإجابة"
+                                        >
+                                          <Lightbulb className={`w-3 h-3 ${showFlashcardHint ? 'text-slate-950 fill-amber-300' : 'text-amber-400'}`} />
+                                          <span>{showFlashcardHint ? 'إخفاء التلميح 💡' : '💡 تلميح'}</span>
+                                        </button>
+
+                                        {/* Hover flip indicator badge */}
+                                        <div className="opacity-80 group-hover:opacity-100 transition-all duration-300 transform group-hover:scale-105 bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm cursor-pointer select-none">
+                                          <FlipHorizontal className="w-3 h-3 text-amber-400 group-hover:rotate-180 transition-transform duration-500" />
+                                          <span>انقر للقلب</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Visual Active Recall Countdown Progress Ring */}
+                                      <div 
+                                        onClick={(e) => e.stopPropagation()} 
+                                        className="flex items-center gap-1.5 bg-slate-900/90 px-2 py-1 rounded-full border border-slate-700/70 shadow-inner"
+                                        title="مؤقت الاسترجاع النشط"
+                                      >
+                                        <div className="relative w-7 h-7 flex items-center justify-center">
+                                          <svg className="w-7 h-7 transform -rotate-90" viewBox="0 0 36 36">
+                                            <path
+                                              className="text-slate-800"
+                                              strokeWidth="3.5"
+                                              stroke="currentColor"
+                                              fill="none"
+                                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                            />
+                                            <path
+                                              className={`transition-all duration-1000 ease-linear ${
+                                                recallTimeLeft / recallTimerMax > 0.5 
+                                                  ? 'text-emerald-400' 
+                                                  : recallTimeLeft / recallTimerMax > 0.25 
+                                                  ? 'text-amber-400' 
+                                                  : 'text-rose-500 animate-pulse'
+                                              }`}
+                                              strokeDasharray={`${(recallTimeLeft / recallTimerMax) * 100}, 100`}
+                                              strokeWidth="3.5"
+                                              strokeLinecap="round"
+                                              stroke="currentColor"
+                                              fill="none"
+                                              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                            />
+                                          </svg>
+                                          <span className={`absolute text-[9px] font-black font-mono ${
+                                            recallTimeLeft / recallTimerMax > 0.5 
+                                              ? 'text-emerald-300' 
+                                              : recallTimeLeft / recallTimerMax > 0.25 
+                                              ? 'text-amber-300' 
+                                              : 'text-rose-400 font-extrabold'
+                                          }`}>
+                                            {recallTimeLeft}s
+                                          </span>
+                                        </div>
+
+                                        <div className="flex items-center gap-0.5">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setIsRecallTimerPaused(!isRecallTimerPaused);
+                                            }}
+                                            className="p-1 rounded-md text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                                            title={isRecallTimerPaused ? "تشغيل المؤقت" : "إيقاف المؤقت مؤقتاً"}
+                                          >
+                                            {isRecallTimerPaused ? (
+                                              <Play className="w-3 h-3 text-emerald-400" />
+                                            ) : (
+                                              <Pause className="w-3 h-3 text-amber-400" />
+                                            )}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setRecallTimeLeft(recallTimerMax);
+                                            }}
+                                            className="p-1 rounded-md text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                                            title="إعادة المؤقت"
+                                          >
+                                            <RotateCcw className="w-3 h-3 text-slate-400 hover:text-white" />
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
                                     
-                                    <div className="my-auto py-2">
+                                    <div className="my-auto py-2 flex flex-col items-center justify-center w-full">
                                       <p className={`text-center font-bold text-base md:text-lg leading-relaxed px-2 ${themeStyles.textMain}`}>
                                         {activeCard.question}
                                       </p>
+
+                                      <AnimatePresence>
+                                        {showFlashcardHint && (
+                                          <motion.div
+                                            initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                                            transition={{ duration: 0.2 }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="mt-3 p-3 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-200 text-xs shadow-lg flex items-start gap-2.5 text-right w-full max-w-md mx-auto"
+                                          >
+                                            <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+                                            <div className="flex-1">
+                                              <span className="font-extrabold text-amber-300 block mb-0.5">💡 تلميح استرجاع المعلومة:</span>
+                                              <p className="text-amber-100 text-[11px] leading-relaxed">
+                                                {activeCard.hint || `فكر في العلاقات الأساسية والمفاهيم الجوهرية لفرع "${activeCard.category}".`}
+                                              </p>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setShowFlashcardHint(false);
+                                              }}
+                                              className="text-amber-400/80 hover:text-amber-100 text-xs font-bold cursor-pointer p-0.5 rounded hover:bg-amber-900/50 transition-colors"
+                                              title="إغلاق التلميح"
+                                            >
+                                              ✕
+                                            </button>
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+
+                                      {recallTimeLeft === 0 && !isCardFlipped && (
+                                        <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 text-[11px] px-3 py-1 rounded-lg flex items-center gap-1.5 animate-bounce mt-2">
+                                          <Clock className="w-3.5 h-3.5 text-rose-400 animate-spin" />
+                                          <span className="font-bold">انتهى وقت الاسترجاع! انقر لقلب البطاقة ورؤية الإجابة.</span>
+                                        </div>
+                                      )}
                                     </div>
 
                                     <div className="flex items-center justify-between text-[10px] border-t border-slate-800/60 pt-2">
-                                      <span className={themeStyles.textMuted}>
-                                        سطوع البطاقة: {cardBrightness}%
+                                      <span className={`${themeStyles.textMuted} flex items-center gap-1`}>
+                                        <FlipHorizontal className="w-3 h-3 text-amber-400" />
+                                        <span>انقر على البطاقة أو الزر لرؤية الإجابة</span>
                                       </span>
                                       <button
                                         type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setIsCardFlipped(!isCardFlipped);
-                                        }}
+                                        onClick={handleCardFlip}
                                         aria-label="قلب البطاقة"
                                         className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold border border-amber-500/40 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95"
                                       >
-                                        <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
+                                        <FlipHorizontal className="w-3.5 h-3.5 text-amber-300" />
                                         <span className="text-xs">قلب البطاقة</span>
                                       </button>
                                     </div>
@@ -3820,20 +4181,51 @@ export default function App() {
 
                                   {/* Back Side (Answer) */}
                                   <div 
-                                    className={`absolute inset-0 border-2 rounded-2xl p-6 flex flex-col justify-between shadow-2xl backface-hidden ${themeStyles.cardBackBg} ${
-                                      isCardFlipped ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                                    } transition-opacity duration-300`}
+                                    className={`absolute inset-0 border-2 rounded-2xl p-6 flex flex-col justify-between shadow-2xl card-face-back transition-opacity duration-300 ${themeStyles.cardBackBg}`}
                                     style={{ 
                                       backfaceVisibility: 'hidden',
                                       WebkitBackfaceVisibility: 'hidden',
                                       transform: 'rotateY(180deg)',
-                                      WebkitTransform: 'rotateY(180deg)'
+                                      WebkitTransform: 'rotateY(180deg)',
+                                      transformStyle: 'preserve-3d',
+                                      WebkitTransformStyle: 'preserve-3d',
+                                      opacity: isCardFlipped ? 1 : 0,
+                                      zIndex: isCardFlipped ? 10 : 0,
+                                      pointerEvents: isCardFlipped ? 'auto' : 'none'
                                     }}
                                   >
                                     <div className="flex justify-between items-center w-full">
-                                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
-                                        الإجابة النموذجية
-                                      </span>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${themeStyles.badge}`}>
+                                          الإجابة النموذجية
+                                        </span>
+                                        {activeCard.difficulty === 'expert' && (
+                                          <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] px-2 py-0.5 rounded-full font-extrabold flex items-center gap-1 animate-pulse">
+                                            🔥 خبير
+                                          </span>
+                                        )}
+                                        {activeCard.difficulty === 'high' && (
+                                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                            🔴 عليا
+                                          </span>
+                                        )}
+                                        {activeCard.difficulty === 'medium' && (
+                                          <span className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                            🟡 متوسط
+                                          </span>
+                                        )}
+                                        {activeCard.difficulty === 'easy' && (
+                                          <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                                            🟢 سهل
+                                          </span>
+                                        )}
+
+                                        {/* Hover flip indicator badge on Back Side */}
+                                        <div className="opacity-80 group-hover:opacity-100 transition-all duration-300 transform group-hover:scale-105 bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-sm cursor-pointer select-none">
+                                          <FlipHorizontal className="w-3 h-3 text-amber-400 group-hover:rotate-180 transition-transform duration-500" />
+                                          <span>انقر للعودة للسؤال</span>
+                                        </div>
+                                      </div>
                                       {(() => {
                                         const status = cardStatus[activeCard.id] || 'unseen';
                                         if (status === 'mastered') {
@@ -3868,20 +4260,18 @@ export default function App() {
                                     </div>
 
                                     <div className="flex items-center justify-between text-[10px] border-t border-slate-800/60 pt-2">
-                                      <span className={themeStyles.textMuted}>
-                                        إجابة تفصيلية مراجعة
+                                      <span className={`${themeStyles.textMuted} flex items-center gap-1`}>
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                        <span>إجابة تفصيلية نموذجية</span>
                                       </span>
                                       <button
                                         type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setIsCardFlipped(!isCardFlipped);
-                                        }}
-                                        aria-label="قلب البطاقة"
+                                        onClick={handleCardFlip}
+                                        aria-label="عرض السؤال"
                                         className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold border border-amber-500/40 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer hover:scale-105 active:scale-95"
                                       >
-                                        <RefreshCw className="w-3.5 h-3.5 text-amber-300" />
-                                        <span className="text-xs">قلب البطاقة</span>
+                                        <FlipHorizontal className="w-3.5 h-3.5 text-amber-300" />
+                                        <span className="text-xs">عرض السؤال</span>
                                       </button>
                                     </div>
                                   </div>
@@ -3911,7 +4301,7 @@ export default function App() {
 
                                 <div className="flex items-center gap-2">
                                   <button
-                                    onClick={() => setIsCardFlipped(!isCardFlipped)}
+                                    onClick={handleCardFlip}
                                     className="px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
                                     title="قلب البطاقة"
                                   >

@@ -13,6 +13,16 @@ export interface KeyConcept {
   questionsAndAnswers?: ConceptQA[];
 }
 
+export interface InteractiveLabel {
+  id: string;
+  name: string;
+  type: 'organelle' | 'tissue' | 'structure' | 'molecule';
+  arabicType: string;
+  xPercent: number;
+  yPercent: number;
+  description: string;
+}
+
 export interface Storyboard {
   graphicIdea: string;
   elements: string[];
@@ -48,6 +58,7 @@ export interface VisualTool {
   storyboard: Storyboard;
   comparison?: ComparisonTable;
   pathwaySteps?: PathwayStep[];
+  organelleTissueLabels?: InteractiveLabel[];
 }
 
 export interface Misconception {
@@ -100,7 +111,7 @@ export interface MCQQuestion {
     incorrectC?: string;
     incorrectD?: string;
   };
-  complexity: 'high' | 'medium' | 'easy';
+  complexity: 'expert' | 'high' | 'medium' | 'easy';
   sourceYear?: string; // e.g. "دور أول 2023" or "تجريبي 2024"
 }
 

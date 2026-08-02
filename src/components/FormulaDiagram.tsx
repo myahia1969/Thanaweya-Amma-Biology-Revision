@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Eye, Zap, Layers, Activity, Sparkles, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Zap, Layers, Activity, Sparkles, AlertCircle, Brain } from 'lucide-react';
 
 interface FormulaDiagramProps {
   formulaId: string;
@@ -10,6 +10,14 @@ interface FormulaDiagramProps {
 export function FormulaDiagram({ formulaId, category }: FormulaDiagramProps) {
   // Contraction state simulation for Muscle/Sarcomere formulas
   const [isContracted, setIsContracted] = useState<boolean>(false);
+  
+  // Interactive Label Mode state
+  const [labelMode, setLabelMode] = useState<'show' | 'quiz'>('show');
+  const [revealedLabels, setRevealedLabels] = useState<Record<string, boolean>>({});
+
+  const toggleLabel = (id: string) => {
+    setRevealedLabels(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // 1. SARCOMERE & MOVEMENT DIAGRAMS
   if (category === 'movement') {
@@ -22,18 +30,33 @@ export function FormulaDiagram({ formulaId, category }: FormulaDiagramProps) {
               <span>مخطط الساركومير التفاعلي (القطعة العضلية):</span>
             </span>
 
-            {/* Contraction Simulation Toggle Button */}
-            <button
-              onClick={() => setIsContracted(!isContracted)}
-              className={`px-3 py-1 rounded-lg text-[11px] font-extrabold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                isContracted
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-              }`}
-            >
-              <Zap className="w-3 h-3 fill-current" />
-              <span>{isContracted ? 'حالة: انقباض تام (H = 0)' : 'حالة: انبساط (طبيعي)'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Label Mode Button */}
+              <button
+                onClick={() => setLabelMode(labelMode === 'show' ? 'quiz' : 'show')}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                  labelMode === 'quiz'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-slate-900 text-slate-300 border-slate-800 hover:text-white'
+                }`}
+              >
+                <Brain className="w-3 h-3 text-amber-400" />
+                <span>{labelMode === 'quiz' ? '🧠 وضع اختباري (Quiz)' : '👁️ التسميات الكاملة'}</span>
+              </button>
+
+              {/* Contraction Simulation Toggle Button */}
+              <button
+                onClick={() => setIsContracted(!isContracted)}
+                className={`px-3 py-1 rounded-lg text-[11px] font-extrabold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                  isContracted
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                }`}
+              >
+                <Zap className="w-3 h-3 fill-current" />
+                <span>{isContracted ? 'حالة: انقباض تام (H = 0)' : 'حالة: انبساط (طبيعي)'}</span>
+              </button>
+            </div>
           </div>
 
           {/* SVG SARCOMERE VISUALIZER */}

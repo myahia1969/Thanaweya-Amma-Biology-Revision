@@ -222,6 +222,14 @@ export const lecture1Data: LectureData = {
         { stepNumber: 3, title: "إثارة غشاء العضلة", description: "يرتبط الأسيتيل كولين بمستقبلاته فيحدث تدفق هائل لأيونات الصوديوم للداخل وينعكس الاستقطاب على طول غشاء الساركوليما." },
         { stepNumber: 4, title: "تحرر كالسيوم الساركوبلازم", description: "ينتقل التنبيه عبر الأنابيب المستعرضة (T-tubules) مسبباً خروج الكالسيوم المخزن في الشبكة الساركوبلازمية." },
         { stepNumber: 5, title: "تكوين الجسور وانزلاق الأكتين", description: "يرتبط الكالسيوم بالأكتين لكشف مواقع الارتباط، وتتصل الجسور العرضية الميوسينية وتستخدم ATP لسحب الأكتين." }
+      ],
+      organelleTissueLabels: [
+        { id: "lbl-1", name: "خيوط الأكتين الرفيعة", type: "structure", arabicType: "تركيب بروتيني", xPercent: 25, yPercent: 35, description: "بروتينات رفيعة سريعة الحركة تسحبها الجسور العرضية نحو منتصف القطعة" },
+        { id: "lbl-2", name: "خيوط الميوسين السميكة", type: "structure", arabicType: "تركيب بروتيني", xPercent: 50, yPercent: 55, description: "بروتينات سميكة ثابتة تنبثق منها الروابط المستعرضة بمساعدة Ca2+ و ATP" },
+        { id: "lbl-3", name: "خط Z الداكن", type: "structure", arabicType: "خط بروتيني", xPercent: 15, yPercent: 45, description: "خط داكن متعرج ينصف المنطقة المضيئة I ويحدد حدود الساركومير" },
+        { id: "lbl-4", name: "المنطقة شبه المضيئة H", type: "structure", arabicType: "منطقة عضلية", xPercent: 50, yPercent: 30, description: "تتكون من ميوسين فقط وتتناقص أو تختفي تماماً أثناء الانقباض التام" },
+        { id: "lbl-5", name: "الشبكة الساركوبلازمية", type: "organelle", arabicType: "عضية خلوية", xPercent: 82, yPercent: 25, description: "عضية متخصصة مخزنة لأيونات الكالسيوم اللازمة لكشف مواقع ارتباط الأكتين" },
+        { id: "lbl-6", name: "الميتوكندريا العضلية", type: "organelle", arabicType: "عضية الطاقة", xPercent: 85, yPercent: 75, description: "عضية الخلية المسؤولة عن إنتاج ATP اللازم للانقباض وفصل الروابط عند الانبساط" }
       ]
     },
     {
@@ -238,7 +246,14 @@ export const lecture1Data: LectureData = {
         ],
         colors: ["أخضر زاهٍ للجدار والخلية الممتلئة", "بني باهت للخلية المنكمشة وفقد الماء", "أزرق لجزيئات الماء والفجوة العصارية"],
         layoutDescription: "رسم تخطيطي تفاعلي جنبًا إلى جنب مع مؤشر للتركيز الأسموزي في التربة أو الوسط الخارجي للتحكم في حالة الدعامة."
-      }
+      },
+      organelleTissueLabels: [
+        { id: "lbl-osm-1", name: "الفجوة العصارية المركزية", type: "organelle", arabicType: "عضية عصارية", xPercent: 50, yPercent: 50, description: "عضية خلوية تجمع الماء والمحلول لتوليد ضغط الامتلاء والضغط الأسموزي" },
+        { id: "lbl-osm-2", name: "الجدار الخلوي السليلوزي", type: "structure", arabicType: "تركيب خوي", xPercent: 20, yPercent: 20, description: "جدار قوي مرن يمنع الخلية النباتية من الانفجار عند تدفق الماء بالخاصية الأسموزية" },
+        { id: "lbl-osm-3", name: "النسيج الكولنشيمي الحي", type: "tissue", arabicType: "نسيج نباتي حي", xPercent: 75, yPercent: 25, description: "نسيج حي يمتلك فجوة ممتلئة ومغلظ بالسليلوز يجمع بين الدعامة الفسيولوجية والتركيبية" },
+        { id: "lbl-osm-4", name: "النسيج الاسكلرنشيمي الميت", type: "tissue", arabicType: "نسيج نباتي ميت", xPercent: 80, yPercent: 75, description: "نسيج ميت خالي من البروتوبلازم مغلظ باللجنين مخصص للدعامة التركيبية الصلبة" },
+        { id: "lbl-osm-5", name: "غشاء السيتوبلازم (الغشاء البلازمي)", type: "structure", arabicType: "غشاء الخلية", xPercent: 35, yPercent: 35, description: "غشاء شبه منفذ يتحكم في مرور جزيئات الماء بالخاصية الأسموزية" }
+      ]
     }
   ],
   tricks: [

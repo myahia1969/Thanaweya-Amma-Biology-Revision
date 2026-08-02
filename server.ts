@@ -32,7 +32,7 @@ async function startServer() {
         return res.status(400).json({ error: "lectureId and lectureTitle are required" });
       }
 
-      const requestedComplexity = difficulty === 'high' ? 'high' : difficulty === 'medium' ? 'medium' : 'easy';
+      const requestedComplexity = difficulty === 'expert' ? 'expert' : difficulty === 'high' ? 'high' : difficulty === 'medium' ? 'medium' : 'easy';
 
       const prompt = `أنت أستاذ خبير في مادة الأحياء لشهادة الثانوية العامة المصرية (الصف الثالث الثانوي - علمي علوم). 
 قم بتوليد 5 أسئلة اختيار من متعدد (MCQ) جديدة ومبتكرة تماماً ومطابقة للنظام الجديد (أسئلة تعتمد على الفهم والتحليل والتفكير النقدي والمستويات العليا ومحاكاة تريكات امتحانات الوزارة للأعوام 2021-2025).
@@ -41,7 +41,7 @@ async function startServer() {
 - رقم المحاضرة: ${lectureId}
 - عنوان المحاضرة: ${lectureTitle}
 - المواضيع المغطاة: ${JSON.stringify(topics)}
-- الصعوبة المطلوبة: ${requestedComplexity === 'high' ? 'مستويات عليا / تفكير عميق وربط' : requestedComplexity === 'medium' ? 'متوسط / فهم وتطبيق كلي' : 'سهل مباشر / استدعاء وتطبيق مباشر'}
+- الصعوبة المطلوبة: ${requestedComplexity === 'expert' ? 'مستوى خبير / تحديات استنتاجية معقدة للغاية وتوليف عابر للفصول' : requestedComplexity === 'high' ? 'مستويات عليا / تفكير عميق وربط' : requestedComplexity === 'medium' ? 'متوسط / فهم وتطبيق كلي' : 'سهل مباشر / استدعاء وتطبيق مباشر'}
 
 شروط مهمة جداً لكل سؤال:
 1. يجب أن يكون نص السؤال باللغة العربية الفصحى السليمة والدقيقة علمياً.
@@ -53,8 +53,8 @@ async function startServer() {
    - "incorrectB": لماذا الخيار B خاطئ (إذا لم يكن هو الإجابة الصحيحة).
    - "incorrectC": لماذا الخيار C خاطئ (إذا لم يكن هو الإجابة الصحيحة).
 5. يجب أن تعكس الأسئلة مستوى الصعوبة المطلوب (${requestedComplexity}) بدقة متناهية.
-6. اجعل "complexity" قيمتها إما "high" (للمستويات العليا والمتوسطة) أو "medium" (للسهلة والمتوسطة).
-7. اجعل "sourceYear" نصاً يوضح الصعوبة والترتيب، مثل: "بنك الأسئلة الذكي - ${requestedComplexity === 'high' ? 'مستويات عليا' : requestedComplexity === 'medium' ? 'مستوى متوسط' : 'مستوى سهل'}".
+6. اجعل "complexity" قيمتها إما "${requestedComplexity}".
+7. اجعل "sourceYear" نصاً يوضح الصعوبة والترتيب، مثل: "بنك الأسئلة الذكي - ${requestedComplexity === 'expert' ? 'مستوى خبير' : requestedComplexity === 'high' ? 'مستويات عليا' : requestedComplexity === 'medium' ? 'مستوى متوسط' : 'مستوى سهل'}".
 8. تجنب تكرار أفكار الأسئلة الكلاسيكية واجعلها تفاعلية كأنها مأخوذة من امتحانات الوزارة الحقيقية.`;
 
       if (!apiKey) {
