@@ -23,6 +23,9 @@ import {
 } from 'lucide-react';
 import { MCQQuestion, LectureData } from '../types';
 import { recordMistake } from '../utils/mistakeBankUtils';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
+import { AnimatedScoreCounter } from './AnimatedScoreCounter';
 
 export interface SpeedLeaderboardEntry {
   id: string;
@@ -107,6 +110,7 @@ export function SpeedQuizTool({
   extendedQuestions,
   onToast
 }: SpeedQuizToolProps) {
+  const { isAr, language } = useLanguage();
   // Game states
   const [quizState, setQuizState] = useState<'idle' | 'running' | 'feedback' | 'completed' | 'leaderboard'>('idle');
   const [scope, setScope] = useState<'current' | 'all'>('all');
@@ -720,17 +724,20 @@ export function SpeedQuizTool({
           animate={{ opacity: 1, scale: 1 }}
           className="bg-slate-900/50 border border-slate-800 rounded-xl p-6 shadow-2xl backdrop-blur-sm space-y-6 text-center"
         >
-          {/* Trophy Header */}
-          <div className="relative inline-flex items-center justify-center">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 shadow-2xl shadow-amber-500/30">
-              <Trophy className="w-12 h-12" />
-            </div>
-            <Sparkles className="w-7 h-7 text-yellow-300 absolute -top-1 -right-1 animate-pulse" />
+          {/* Trophy & Animated Score Counter */}
+          <div className="flex flex-col items-center justify-center space-y-3">
+            <AnimatedScoreCounter
+              value={Math.round((summaryMetrics.correctCount / 10) * 100)}
+              size="lg"
+              label={isAr ? `إجابات صحيحة (${summaryMetrics.correctCount}/10)` : `Correct Answers (${summaryMetrics.correctCount}/10)`}
+              showRing={true}
+              showSparkles={true}
+            />
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-2xl font-bold text-white">اكتمل اختبار السرعة بنجاح!</h3>
-            <p className="text-xs text-slate-400">ملخص أدائك وسرعة استجابتك في الأسئلة العشرة</p>
+            <h3 className="text-2xl font-bold text-white">{isAr ? "اكتمل اختبار السرعة بنجاح!" : "Speed Quiz Completed Successfully!"}</h3>
+            <p className="text-xs text-slate-400">{isAr ? "ملخص أدائك وسرعة استجابتك في الأسئلة العشرة" : "Summary of performance and speed across the 10 questions"}</p>
           </div>
 
           {/* Metric Cards Grid */}

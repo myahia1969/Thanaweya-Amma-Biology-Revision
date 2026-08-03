@@ -24,6 +24,8 @@ import {
   Zap
 } from 'lucide-react';
 import { MCQQuestion, LectureData, MistakeItem } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
 import { 
   getMistakeBank, 
   saveMistakeBank, 
@@ -37,6 +39,7 @@ interface MistakeBankToolProps {
 }
 
 export function MistakeBankTool({ allLectures, onToast }: MistakeBankToolProps) {
+  const { isAr, language } = useLanguage();
   // Main list state from localStorage
   const [mistakes, setMistakes] = useState<MistakeItem[]>(() => {
     const saved = getMistakeBank();

@@ -19,6 +19,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { LectureData } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 
 export interface ChatMessage {
   id: string;
@@ -35,12 +36,20 @@ interface BiologyChatbotModalProps {
   onNavigateToLecture?: (lectureId: number, tab?: string) => void;
 }
 
-const PRESET_SUGGESTIONS = [
+const PRESET_SUGGESTIONS_AR = [
   { label: '🧮 مسألة حسابية', prompt: 'كيف أحسب عدد القطع العضلية، مناطق H، وسلاسل الـ Z-lines في اللييفة العضلية؟' },
   { label: '🧬 تريكات الـ DNA', prompt: 'ما الفرق الحقيقي بين كودونات الوقف وكودون البدء AUG ولماذا لا تشفر حمضاً أمينياً؟' },
   { label: '🛡️ المناعة والخلايا', prompt: 'اشرح لي الفرق التنافسي بين الخلايا التائية القاتلة Tc والخلايا القاتلة الطبيعية NK' },
   { label: '⚡ اختبار تريكات', prompt: 'اطرح عليّ سؤالاً ذكياً من مستويات العليا في التنسيق الهرموني واختبر فهمي' },
   { label: '📖 ملخص سريع', prompt: 'اعطني ملخصاً مركزاً لأهم نقاط وتريكات الامتحانات في الفصل الحالي' }
+];
+
+const PRESET_SUGGESTIONS_EN = [
+  { label: '🧮 Calculation Problem', prompt: 'How do I calculate sarcomeres, H-zones, and Z-lines in a myofibril?' },
+  { label: '🧬 DNA Tricks', prompt: 'What is the exact difference between stop codons and AUG start codon?' },
+  { label: '🛡️ Immunity & Cells', prompt: 'Explain the difference between Cytotoxic T-cells (Tc) and Natural Killer cells (NK)' },
+  { label: '⚡ Trick Quiz', prompt: 'Ask me a high-order question on Hormonal Coordination to test my understanding' },
+  { label: '📖 Quick Summary', prompt: 'Give me a concise summary of exam tricks for the current chapter' }
 ];
 
 export const BiologyChatbotModal: React.FC<BiologyChatbotModalProps> = ({
@@ -50,6 +59,9 @@ export const BiologyChatbotModal: React.FC<BiologyChatbotModalProps> = ({
   allLectures,
   onNavigateToLecture
 }) => {
+  const { isAr } = useLanguage();
+  const presets = isAr ? PRESET_SUGGESTIONS_AR : PRESET_SUGGESTIONS_EN;
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
       const saved = localStorage.getItem('thanaweya_chatbot_history');
@@ -324,9 +336,9 @@ export const BiologyChatbotModal: React.FC<BiologyChatbotModalProps> = ({
         {/* Preset Prompt Suggestions */}
         <div className="px-4 py-2 bg-slate-950/90 border-t border-slate-850/60 overflow-x-auto flex items-center gap-2 shrink-0 scrollbar-none">
           <span className="text-[10px] font-bold text-amber-400 shrink-0 flex items-center gap-1">
-            <Zap className="w-3 h-3" /> مقترحات سريعة:
+            <Zap className="w-3 h-3" /> {isAr ? 'مقترحات سريعة:' : 'Quick Prompts:'}
           </span>
-          {PRESET_SUGGESTIONS.map((preset, idx) => (
+          {presets.map((preset, idx) => (
             <button
               key={idx}
               onClick={() => handleSendMessage(preset.prompt)}

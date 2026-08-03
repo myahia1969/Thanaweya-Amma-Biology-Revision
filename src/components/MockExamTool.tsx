@@ -34,6 +34,9 @@ import {
 import { MCQQuestion, LectureData } from '../types';
 import { fallbackQuestions } from '../data/fallbackQuestions';
 import { recordMistake } from '../utils/mistakeBankUtils';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
+import { AnimatedScoreCounter } from './AnimatedScoreCounter';
 
 interface MockExamToolProps {
   allLectures: LectureData[];
@@ -50,6 +53,8 @@ interface MockExamQuestionItem {
 }
 
 export function MockExamTool({ allLectures, onToast, isFocusMode, onToggleFocusMode }: MockExamToolProps) {
+  const { isAr, language } = useLanguage();
+
   // Exam Lifecycle State: 'intro' | 'active' | 'review_summary'
   const [examState, setExamState] = useState<'intro' | 'active' | 'review_summary'>('intro');
 
@@ -725,19 +730,25 @@ export function MockExamTool({ allLectures, onToast, isFocusMode, onToggleFocusM
           {/* TOP SCORE OVERVIEW BANNER */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-md space-y-6 relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-slate-800 pb-6">
-              <div className="flex items-center gap-4">
-                <div className={`w-20 h-20 rounded-2xl flex flex-col items-center justify-center border font-mono font-black shadow-xl shrink-0 ${analytics.gradeColor}`}>
-                  <span className="text-3xl">{analytics.scorePercentage}%</span>
-                  <span className="text-[10px] font-sans">المجموع النهائي</span>
-                </div>
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                <AnimatedScoreCounter
+                  value={analytics.scorePercentage}
+                  size="lg"
+                  label={isAr ? "المجموع النهائي" : "Final Score"}
+                  showRing={true}
+                  showSparkles={true}
+                />
 
                 <div className="space-y-1 text-center md:text-right">
                   <span className={`inline-block px-3 py-1 rounded-full text-xs font-extrabold border ${analytics.gradeColor}`}>
                     {analytics.gradeTitle}
                   </span>
-                  <h2 className="text-xl sm:text-2xl font-black text-white">تقرير نتيجة اختبار المحاكاة الشامل</h2>
+                  <h2 className="text-xl sm:text-2xl font-black text-white">{isAr ? "تقرير نتيجة اختبار المحاكاة الشامل" : "Comprehensive Mock Exam Report"}</h2>
                   <p className="text-xs text-slate-400">
-                    تم الإجابة على <strong>{50 - analytics.unansweredCount}</strong> سؤالاً من أصل 50 سؤالاً في زمن قدره <strong>{analytics.timeSpentFormatted}</strong>.
+                    {isAr 
+                      ? <>تم الإجابة على <strong>{50 - analytics.unansweredCount}</strong> سؤالاً من أصل 50 سؤالاً في زمن قدره <strong>{analytics.timeSpentFormatted}</strong>.</>
+                      : <>Answered <strong>{50 - analytics.unansweredCount}</strong> of 50 questions in <strong>{analytics.timeSpentFormatted}</strong>.</>
+                    }
                   </p>
                 </div>
               </div>

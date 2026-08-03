@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { LectureData, ConceptMapNode, ConceptMapLink, ConceptCategory } from '../types';
 import { lectureConceptMaps, crossChapterLinks } from '../data/conceptMaps';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
 
 interface ConceptMapToolProps {
   allLectures: LectureData[];
@@ -62,6 +64,7 @@ export const ConceptMapTool: React.FC<ConceptMapToolProps> = ({
   isModal = false,
   onCloseModal
 }) => {
+  const { isAr, language } = useLanguage();
   const [activeLectureId, setActiveLectureId] = useState<number>(selectedLectureId);
   const [showGlobalCrossMap, setShowGlobalCrossMap] = useState<boolean>(false);
   const [selectedNode, setSelectedNode] = useState<ConceptMapNode | null>(null);

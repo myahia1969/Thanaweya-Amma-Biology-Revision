@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toPng } from 'html-to-image';
+import { useLanguage } from '../context/LanguageContext';
 import { 
   Eye, 
   EyeOff, 
@@ -18,23 +19,48 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Minimize2,
   Move,
   Camera,
   Download,
-  Check
+  Check,
+  X,
+  FileText,
+  FileDown,
+  Printer,
+  GripVertical,
+  XCircle,
+  Trophy,
+  Target,
+  AlertTriangle,
+  BookOpen
 } from 'lucide-react';
 import { VisualTool, InteractiveLabel } from '../types';
+import { recordDiagramLabelMistake } from '../utils/mistakeBankUtils';
 
 interface VisualExplanationComponentProps {
   tool: VisualTool;
 }
 
 export const VisualExplanationComponent: React.FC<VisualExplanationComponentProps> = ({ tool }) => {
-  // Label mode state: 'full' (show all), 'quiz' (masked for active recall), 'hidden' (hide all labels)
-  const [labelMode, setLabelMode] = useState<'full' | 'quiz' | 'hidden'>('full');
+  const { isAr } = useLanguage();
+
+  // Label mode state: 'full' (show all), 'quiz' (masked for active recall), 'dragQuiz' (drag-and-drop labeling), 'hidden' (hide all labels)
+  const [labelMode, setLabelMode] = useState<'full' | 'quiz' | 'dragQuiz' | 'hidden'>('full');
   
   // Category filter for organelles / tissues / structures
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Drag-and-drop labeling quiz state
+  const [dragAssignments, setDragAssignments] = useState<Record<string, string>>({});
+  const [dragSlotStatus, setDragSlotStatus] = useState<Record<string, 'correct' | 'incorrect'>>({});
+  const [selectedLabelForDrop, setSelectedLabelForDrop] = useState<string | null>(null);
+  const [dragHoveredSlot, setDragHoveredSlot] = useState<string | null>(null);
+  const [shuffledBankLabels, setShuffledBankLabels] = useState<InteractiveLabel[]>([]);
+  const [failedAttemptsPerSlot, setFailedAttemptsPerSlot] = useState<Record<string, number>>({});
+  const [mistakeToast, setMistakeToast] = useState<string | null>(null);
+  const [hintedSlotId, setHintedSlotId] = useState<string | null>(null);
+  const [hintToast, setHintToast] = useState<string | null>(null);
   
   // Revealed label state map (for Quiz mode active recall)
   const [revealedLabels, setRevealedLabels] = useState<Record<string, boolean>>({});
@@ -45,10 +71,28 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
   // Currently selected organelle/tissue pin detail modal or card
   const [activePin, setActivePin] = useState<InteractiveLabel | null>(null);
 
+  // Fullscreen view toggle state for maximized biological diagram viewing
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  // Esc key listener to exit full-screen mode easily
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
+
   // Diagram screenshot reference & state
   const diagramRef = useRef<HTMLDivElement>(null);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
   const [captureSuccess, setCaptureSuccess] = useState<boolean>(false);
+
+  // PDF Generation State
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
+  const [pdfSuccess, setPdfSuccess] = useState<boolean>(false);
 
   // Strict Zoom Constraints to prevent pixelation (MAX_ZOOM) or losing diagram frame (MIN_ZOOM)
   const MIN_ZOOM = 1.0;
@@ -81,6 +125,106 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
       console.error('Failed to capture high-resolution diagram screenshot:', err);
     } finally {
       setIsCapturing(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!diagramRef.current) return;
+    try {
+      setIsGeneratingPdf(true);
+
+      const jspdfModule = await import('jspdf');
+      const jsPDF = jspdfModule.jsPDF || jspdfModule.default;
+
+      // Temporarily reset zoom to 100% for high quality export if currently zoomed
+      const prevZoom = zoomLevel;
+      const prevPan = panOffset;
+      if (zoomLevel !== 1) {
+        setZoomLevel(1);
+        setPanOffset({ x: 0, y: 0 });
+        await new Promise(res => setTimeout(res, 120));
+      }
+
+      const dataUrl = await toPng(diagramRef.current, {
+        cacheBust: true,
+        quality: 0.98,
+        pixelRatio: 2,
+        backgroundColor: '#020617',
+      });
+
+      // Restore zoom if user was zooming
+      if (prevZoom !== 1) {
+        setZoomLevel(prevZoom);
+        setPanOffset(prevPan);
+      }
+
+      const img = new Image();
+      img.src = dataUrl;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+
+      const isLandscape = img.width > img.height;
+      const pdf = new jsPDF({
+        orientation: isLandscape ? 'landscape' : 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Printable PDF Header Banner
+      pdf.setFillColor(15, 23, 42); // slate 900 background
+      pdf.rect(0, 0, pageWidth, 26, 'F');
+
+      pdf.setTextColor(16, 185, 129); // emerald 400 header accent
+      pdf.setFontSize(14);
+      const pdfTitle = tool.title || 'Biological Visual Diagram';
+      pdf.text(pdfTitle, 12, 12);
+
+      pdf.setTextColor(148, 163, 184); // slate 400 subtitle
+      pdf.setFontSize(9);
+      pdf.text(`High-Resolution Visual Diagram | Mode: ${labelMode.toUpperCase()} | Category: ${selectedCategory.toUpperCase()}`, 12, 20);
+
+      // Diagram Dimensions Calculation
+      const margin = 10;
+      const topOffset = 30;
+      const availableWidth = pageWidth - (margin * 2);
+      const availableHeight = pageHeight - topOffset - 16;
+
+      const imgRatio = img.width / img.height;
+      let renderWidth = availableWidth;
+      let renderHeight = renderWidth / imgRatio;
+
+      if (renderHeight > availableHeight) {
+        renderHeight = availableHeight;
+        renderWidth = renderHeight * imgRatio;
+      }
+
+      const xPos = (pageWidth - renderWidth) / 2;
+      const yPos = topOffset + ((availableHeight - renderHeight) / 2);
+
+      // Draw active diagram and annotations onto PDF
+      pdf.addImage(dataUrl, 'PNG', xPos, yPos, renderWidth, renderHeight);
+
+      // Footer branding bar
+      pdf.setFillColor(15, 23, 42);
+      pdf.rect(0, pageHeight - 12, pageWidth, 12, 'F');
+      pdf.setTextColor(203, 213, 225);
+      pdf.setFontSize(8);
+      pdf.text('Biology Thanaweya Amma Platform - Interactive Diagram Export', pageWidth / 2, pageHeight - 5, { align: 'center' });
+
+      const safeTitle = (tool.title || 'Diagram').replace(/\s+/g, '_');
+      pdf.save(`${safeTitle}_Visual_Explanation.pdf`);
+
+      setPdfSuccess(true);
+      setTimeout(() => setPdfSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to export PDF document:', err);
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -213,6 +357,128 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
     return lbl.type === selectedCategory;
   });
 
+  // Shuffle label pool whenever dragQuiz mode is active
+  useEffect(() => {
+    if (labelMode === 'dragQuiz') {
+      const shuffled = [...organelleLabels].sort(() => Math.random() - 0.5);
+      setShuffledBankLabels(shuffled);
+    }
+  }, [labelMode, tool.id]);
+
+  const handleLabelDrop = (labelId: string, slotId: string) => {
+    const isCorrect = labelId === slotId;
+    
+    // Remove labelId from any previous slot if already placed
+    const updatedAssignments = { ...dragAssignments };
+    Object.keys(updatedAssignments).forEach(key => {
+      if (updatedAssignments[key] === labelId) {
+        delete updatedAssignments[key];
+      }
+    });
+
+    updatedAssignments[slotId] = labelId;
+    setDragAssignments(updatedAssignments);
+
+    setDragSlotStatus(prev => ({
+      ...prev,
+      [slotId]: isCorrect ? 'correct' : 'incorrect'
+    }));
+
+    if (!isCorrect) {
+      const currentCount = failedAttemptsPerSlot[slotId] || 0;
+      const newCount = currentCount + 1;
+      setFailedAttemptsPerSlot(prev => ({ ...prev, [slotId]: newCount }));
+
+      const targetSlotLbl = organelleLabels.find(l => l.id === slotId);
+      const placedLbl = organelleLabels.find(l => l.id === labelId);
+
+      const targetPartName = targetSlotLbl?.name || slotId;
+      const wrongLabelPlacedName = placedLbl?.name || labelId;
+
+      recordDiagramLabelMistake(
+        tool.title || 'رسم توضيحي',
+        targetPartName,
+        slotId,
+        wrongLabelPlacedName,
+        targetSlotLbl?.description || 'تسمية بصرية على المخطط',
+        1,
+        'الشروحات البصرية - التسميات والتوضيحات'
+      );
+
+      const msg = isAr 
+        ? `⚠️ محاولة خاطئة! تم حفظ الخطأ لـ "${targetPartName}" في بنك الأخطاء (إجمالي المحاولات الخاطئة: ${newCount})`
+        : `⚠️ Failed attempt recorded for "${targetPartName}" in Mistake Bank (Total failed attempts: ${newCount})`;
+      setMistakeToast(msg);
+      setTimeout(() => setMistakeToast(null), 4000);
+    }
+
+    if (selectedLabelForDrop === labelId) {
+      setSelectedLabelForDrop(null);
+    }
+  };
+
+  const handleRemoveAssignment = (slotId: string) => {
+    setDragAssignments(prev => {
+      const next = { ...prev };
+      delete next[slotId];
+      return next;
+    });
+    setDragSlotStatus(prev => {
+      const next = { ...prev };
+      delete next[slotId];
+      return next;
+    });
+  };
+
+  const handleResetDragQuiz = () => {
+    setDragAssignments({});
+    setDragSlotStatus({});
+    setSelectedLabelForDrop(null);
+    setHintedSlotId(null);
+    setHintToast(null);
+    const shuffled = [...organelleLabels].sort(() => Math.random() - 0.5);
+    setShuffledBankLabels(shuffled);
+  };
+
+  const handleShowHint = () => {
+    const unplacedSlots = organelleLabels.filter(lbl => dragSlotStatus[lbl.id] !== 'correct');
+    
+    if (unplacedSlots.length === 0) {
+      const msg = isAr ? '✨ اكتمل الاختبار بنجاح! جميع التسميات صحيحة.' : '✨ Quiz complete! All labels are correctly placed.';
+      setHintToast(msg);
+      setTimeout(() => setHintToast(null), 3000);
+      return;
+    }
+
+    let slotToHint: InteractiveLabel | undefined;
+    if (selectedLabelForDrop) {
+      slotToHint = unplacedSlots.find(l => l.id === selectedLabelForDrop);
+    }
+
+    if (!slotToHint) {
+      slotToHint = unplacedSlots[Math.floor(Math.random() * unplacedSlots.length)];
+    }
+
+    if (slotToHint) {
+      setHintedSlotId(slotToHint.id);
+      const msg = isAr 
+        ? `💡 تلميح: تم تسليط الضوء المؤقت على موضع "${slotToHint.name}"!`
+        : `💡 Hint: Temporarily highlighting target zone for "${slotToHint.name}"!`;
+      setHintToast(msg);
+
+      setTimeout(() => {
+        setHintedSlotId(null);
+        setHintToast(null);
+      }, 3500);
+    }
+  };
+
+  const correctDragCount = Object.values(dragSlotStatus).filter(status => status === 'correct').length;
+  const totalDragCount = organelleLabels.length;
+  const isDragQuizComplete = totalDragCount > 0 && correctDragCount === totalDragCount;
+  const unplacedLabels = shuffledBankLabels.filter(lbl => !Object.values(dragAssignments).includes(lbl.id));
+  const totalFailedCount = (Object.values(failedAttemptsPerSlot) as number[]).reduce((a, b) => a + b, 0);
+
   // Toggle individual label in Quiz mode or toggle list
   const handleToggleReveal = (id: string) => {
     setRevealedLabels(prev => ({
@@ -245,7 +511,34 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
   const totalCount = organelleLabels.length;
 
   return (
-    <div id="visual-explanation-container" className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 md:p-6 shadow-xl backdrop-blur-sm space-y-6">
+    <div 
+      id="visual-explanation-container" 
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-xl p-4 md:p-6 overflow-y-auto space-y-6 flex flex-col transition-all duration-300 animate-fadeIn"
+          : "bg-slate-900/40 border border-slate-800 rounded-xl p-5 md:p-6 shadow-xl backdrop-blur-sm space-y-6"
+      }
+    >
+      {/* Fullscreen Banner Notification when Fullscreen mode is active */}
+      {isFullscreen && (
+        <div className="bg-indigo-950/90 border border-indigo-500/50 rounded-xl p-3 flex items-center justify-between text-xs text-indigo-200 shadow-2xl shrink-0">
+          <div className="flex items-center gap-2">
+            <Maximize2 className="w-4 h-4 text-indigo-400 animate-pulse" />
+            <span className="font-bold">وضع الشاشة الكاملة نشِط — عرض مجهري مكبر للمخطط البايولوجي والتسميات</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">(اضغط Esc للخروج)</span>
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer flex items-center gap-1.5 shadow-md border border-amber-300"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>إغلاق ملء الشاشة</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Visual Component Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
         <div>
@@ -262,8 +555,8 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
           <p className="text-xs text-slate-400 mt-1">النمذجة البصرية الشاملة مع وضع التسميات التفاعلي وتكبير الفحص المجهري.</p>
         </div>
 
-        {/* Global Label Mode Toggle Buttons */}
-        <div className="bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex items-center gap-1 self-start md:self-auto">
+        {/* Global Label Mode & Fullscreen Toggle Buttons */}
+        <div className="bg-slate-950 p-1.5 rounded-xl border border-slate-800 flex items-center gap-1 flex-wrap self-start md:self-auto">
           <button
             onClick={() => setLabelMode('full')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
@@ -285,7 +578,19 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
             }`}
           >
             <Brain className="w-3.5 h-3.5" />
-            <span>وضع الاختبار (Quiz)</span>
+            <span>{isAr ? 'وضع كشف الاختبار' : 'Active Recall Quiz'}</span>
+          </button>
+
+          <button
+            onClick={() => setLabelMode('dragQuiz')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+              labelMode === 'dragQuiz'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 font-black'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+            }`}
+          >
+            <Move className="w-3.5 h-3.5" />
+            <span>{isAr ? 'اختبار السحب والإفلات' : 'Drag & Drop Quiz'}</span>
           </button>
 
           <button
@@ -298,6 +603,49 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
           >
             <EyeOff className="w-3.5 h-3.5" />
             <span>إخفاء التسميات</span>
+          </button>
+
+          <div className="h-4 w-px bg-slate-800 mx-1 hidden sm:block" />
+
+          <button
+            onClick={handleDownloadPdf}
+            disabled={isGeneratingPdf}
+            title={isAr ? "تحميل التوضيح البصري كملف PDF عالي الجودة للطباعة" : "Download active diagram and annotations as printable PDF"}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+              pdfSuccess
+                ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md font-black'
+                : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+            }`}
+          >
+            {pdfSuccess ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                <span>{isAr ? 'تم حفظ PDF!' : 'PDF Saved!'}</span>
+              </>
+            ) : isGeneratingPdf ? (
+              <>
+                <FileText className="w-3.5 h-3.5 animate-bounce text-rose-400" />
+                <span>{isAr ? 'جاري إنشاء PDF...' : 'Generating PDF...'}</span>
+              </>
+            ) : (
+              <>
+                <FileDown className="w-3.5 h-3.5 text-rose-400" />
+                <span>{isAr ? 'تحميل PDF' : 'Download PDF'}</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => setIsFullscreen(prev => !prev)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+              isFullscreen
+                ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-md font-black'
+                : 'bg-indigo-500/10 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/20 hover:text-white'
+            }`}
+            title={isFullscreen ? "تصغير الشاشة إلى الوضع العادي" : "عرض الرسمة والمخطط بملء الشاشة الكاملة (Fullscreen)"}
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />}
+            <span>{isFullscreen ? 'تصغير الشاشة' : 'ملء الشاشة'}</span>
           </button>
         </div>
       </div>
@@ -378,8 +726,160 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
           )}
         </div>
 
+        {/* Drag & Drop Quiz Control Box */}
+        {labelMode === 'dragQuiz' && (
+          <div className="labeling-quiz-container pt-3 border-t border-slate-800 space-y-3">
+            <div className="bg-slate-900/90 border border-cyan-500/30 rounded-xl p-3.5 space-y-3 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+                    <Move className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                      {isAr ? 'اختبار السحب والإفلات للتسميات' : 'Drag & Drop Labeling Quiz'}
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      {isAr ? 'اسحب التسميات من البنك وضعها على الموضع الصحيح بالرسمة. يتم حفظ المحاولات الخاطئة في "بنك الأخطاء" تلقائياً.' : 'Drag labels onto diagram targets. Failed attempts are automatically saved to the Mistake Bank.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <div className="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-cyan-300 flex items-center gap-1.5">
+                    <Trophy className="w-4 h-4 text-amber-400" />
+                    <span>{isAr ? `النتيجة: ${correctDragCount} / ${totalDragCount}` : `Score: ${correctDragCount} / ${totalDragCount}`}</span>
+                  </div>
+
+                  {totalFailedCount > 0 && (
+                    <div className="bg-rose-950/60 border border-rose-500/40 px-3 py-1.5 rounded-xl text-xs font-mono font-bold text-rose-300 flex items-center gap-1.5 shadow-md">
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                      <span>{isAr ? `أخطاء بالبنك: ${totalFailedCount}` : `Banked Errors: ${totalFailedCount}`}</span>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleShowHint}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all flex items-center gap-1.5 cursor-pointer shadow-md ${
+                      hintedSlotId 
+                        ? 'bg-amber-400 text-slate-950 border-amber-300 ring-4 ring-amber-400/40 animate-pulse font-black' 
+                        : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border-amber-500/40'
+                    }`}
+                    title={isAr ? "إظهار تلميح بؤري للموضع الصحيح" : "Show temporary zone hint"}
+                  >
+                    <HelpCircle className={`w-3.5 h-3.5 ${hintedSlotId ? 'text-slate-950' : 'text-amber-400'}`} />
+                    <span>{isAr ? 'تلميح' : 'Hint'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleResetDragQuiz}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{isAr ? 'إعادة التعيين' : 'Reset Quiz'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Toast Notification for Record in Mistake Bank & Hint Messages */}
+              <AnimatePresence>
+                {mistakeToast && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="bg-rose-950/90 border border-rose-500/50 rounded-xl p-2.5 text-rose-200 text-xs font-bold flex items-center justify-between shadow-xl"
+                  >
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-rose-400 shrink-0" />
+                      <span>{mistakeToast}</span>
+                    </div>
+                  </motion.div>
+                )}
+                {hintToast && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="bg-amber-950/90 border border-amber-500/60 rounded-xl p-2.5 text-amber-200 text-xs font-bold flex items-center justify-between shadow-xl"
+                  >
+                    <div className="flex items-center gap-2">
+                      <HelpCircle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
+                      <span>{hintToast}</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Completion Celebration Notification */}
+              {isDragQuizComplete && (
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="bg-emerald-950/90 border-2 border-emerald-500/60 rounded-xl p-3 flex items-center justify-between text-emerald-200 text-xs shadow-2xl"
+                >
+                  <div className="flex items-center gap-2 font-bold">
+                    <Sparkles className="w-5 h-5 text-emerald-400 animate-spin" />
+                    <span>{isAr ? '🎉 إنجاز رائع! أتممت تعيين جميع التسميات على المخطط بنجاح 100%!' : '🎉 Excellent! All labels correctly placed on the diagram!'}</span>
+                  </div>
+                  <button
+                    onClick={handleResetDragQuiz}
+                    className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer shadow-md"
+                  >
+                    {isAr ? 'إعادة الاختبار' : 'Retry Quiz'}
+                  </button>
+                </motion.div>
+              )}
+
+              {/* Draggable Label Pool */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <GripVertical className="w-4 h-4 text-cyan-400" />
+                  {isAr ? 'بنك التسميات المتاحة للسحب (انقر أو اسحب بالتسمية):' : 'Available Labels Pool (Drag or Click to Select):'}
+                </span>
+
+                {unplacedLabels.length === 0 ? (
+                  <div className="text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-lg text-center font-mono">
+                    {isAr ? '✨ تم وضع جميع التسميات! تفقّد مواضعك بالرسمة أسفله.' : '✨ All labels placed! Check your placements on the diagram below.'}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {unplacedLabels.map(lbl => {
+                      const isSelected = selectedLabelForDrop === lbl.id;
+                      return (
+                        <div
+                          key={lbl.id}
+                          draggable={true}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', lbl.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onClick={() => setSelectedLabelForDrop(isSelected ? null : lbl.id)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-grab active:cursor-grabbing border flex items-center gap-2 shadow-md ${
+                            isSelected
+                              ? 'bg-amber-500 text-slate-950 border-amber-300 ring-4 ring-amber-500/30 scale-105 shadow-xl font-black'
+                              : 'bg-slate-950 hover:bg-slate-900 text-white border-slate-750 hover:border-cyan-400/60'
+                          }`}
+                        >
+                          <GripVertical className={`w-3.5 h-3.5 ${isSelected ? 'text-slate-950' : 'text-slate-400'}`} />
+                          <span>{lbl.name}</span>
+                          <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                            isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-900 text-slate-400'
+                          }`}>
+                            {lbl.arabicType}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Interactive Label Matrix Grid for Students */}
-        {labelMode !== 'hidden' && (
+        {labelMode !== 'hidden' && labelMode !== 'dragQuiz' && (
           <div className="pt-2 border-t border-slate-800/80">
             <span className="text-[11px] font-bold text-slate-400 mb-2 block">
               تسميات العضيات والأنسجة في هذه الرسمة (انقر على التسمية للتحكم أو الكشف):
@@ -564,7 +1064,59 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
                 ) : (
                   <>
                     <Camera className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>التقاط صورة المخطط (Screenshot)</span>
+                    <span>التقاط صورة (PNG)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isGeneratingPdf}
+                title="تحميل الرسمة والمخطط والتسميات كملف PDF عالي الجودة للطباعة"
+                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                  pdfSuccess
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md font-black'
+                    : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+                }`}
+              >
+                {pdfSuccess ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isAr ? 'تم حفظ PDF!' : 'PDF Saved!'}</span>
+                  </>
+                ) : isGeneratingPdf ? (
+                  <>
+                    <FileText className="w-3.5 h-3.5 animate-bounce text-rose-400" />
+                    <span>{isAr ? 'جاري الإنشاء...' : 'Exporting...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="w-3.5 h-3.5 text-rose-400" />
+                    <span>{isAr ? 'تحميل PDF' : 'Download PDF'}</span>
+                  </>
+                )}
+              </button>
+
+              <div className="h-4 w-px bg-slate-800 mx-1" />
+
+              <button
+                onClick={() => setIsFullscreen(prev => !prev)}
+                title={isFullscreen ? 'الخروج من الشاشة الكاملة' : 'ملء الشاشة لفتح العرض المجهري (Fullscreen View)'}
+                className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                  isFullscreen
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-black'
+                    : 'bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                }`}
+              >
+                {isFullscreen ? (
+                  <>
+                    <Minimize2 className="w-3.5 h-3.5" />
+                    <span>تصغير الشاشة</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>ملء الشاشة</span>
                   </>
                 )}
               </button>
@@ -614,11 +1166,107 @@ export const VisualExplanationComponent: React.FC<VisualExplanationComponentProp
                 src={tool.imageUrl} 
                 alt={tool.title} 
                 referrerPolicy="no-referrer"
-                className="w-full max-h-[440px] object-cover rounded-b-xl filter brightness-95"
+                className={`w-full transition-all duration-200 filter brightness-95 ${
+                  isFullscreen 
+                    ? 'max-h-[calc(100vh-280px)] min-h-[400px] object-contain rounded-xl' 
+                    : 'max-h-[440px] object-cover rounded-b-xl'
+                }`}
               />
 
+              {/* Drag & Drop Quiz Target Drop Slots Overlay */}
+              {labelMode === 'dragQuiz' && organelleLabels.map((slotLbl, idx) => {
+                const placedLabelId = dragAssignments[slotLbl.id];
+                const placedLabel = organelleLabels.find(l => l.id === placedLabelId);
+                const status = dragSlotStatus[slotLbl.id];
+                const isHovered = dragHoveredSlot === slotLbl.id;
+                const isSelectedTarget = selectedLabelForDrop !== null && !placedLabelId;
+                const isHinted = hintedSlotId === slotLbl.id;
+
+                return (
+                  <div
+                    key={slotLbl.id}
+                    style={{ top: `${slotLbl.yPercent}%`, left: `${slotLbl.xPercent}%` }}
+                    className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ${
+                      isHinted ? 'z-40 scale-125' : 'z-20'
+                    }`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragHoveredSlot(slotLbl.id);
+                    }}
+                    onDragLeave={() => setDragHoveredSlot(null)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragHoveredSlot(null);
+                      const droppedId = e.dataTransfer.getData('text/plain');
+                      if (droppedId) {
+                        handleLabelDrop(droppedId, slotLbl.id);
+                      }
+                    }}
+                    onClick={() => {
+                      if (selectedLabelForDrop) {
+                        handleLabelDrop(selectedLabelForDrop, slotLbl.id);
+                      }
+                    }}
+                  >
+                    {placedLabel ? (
+                      <div
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-2xl border backdrop-blur-md transition-all ${
+                          isHinted
+                            ? 'bg-amber-400 text-slate-950 border-amber-300 ring-8 ring-amber-400/70 shadow-[0_0_30px_rgba(251,191,36,0.9)] animate-pulse font-black'
+                            : status === 'correct'
+                              ? 'bg-emerald-950/95 text-emerald-300 border-emerald-400 ring-2 ring-emerald-500/40'
+                              : 'bg-rose-950/95 text-rose-300 border-rose-400 ring-2 ring-rose-500/40'
+                        }`}
+                      >
+                        {status === 'correct' ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        )}
+                        <span>{placedLabel.name}</span>
+                        {failedAttemptsPerSlot[slotLbl.id] > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-rose-500/30 text-rose-200 text-[10px] font-mono border border-rose-500/50 flex items-center gap-0.5" title={isAr ? `أخطاء مسجلة: ${failedAttemptsPerSlot[slotLbl.id]}` : `Recorded errors: ${failedAttemptsPerSlot[slotLbl.id]}`}>
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-300" />
+                            <span>{failedAttemptsPerSlot[slotLbl.id]}</span>
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveAssignment(slotLbl.id);
+                          }}
+                          title={isAr ? "إلغاء الموضع لإعادة المحاولة" : "Remove placement to retry"}
+                          className="p-0.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white mr-0.5 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all duration-200 cursor-pointer flex items-center gap-1.5 shadow-xl ${
+                          isHinted
+                            ? 'bg-amber-400 text-slate-950 border-amber-300 scale-125 ring-8 ring-amber-400/60 shadow-[0_0_35px_rgba(251,191,36,0.95)] animate-bounce font-black'
+                            : isHovered || isSelectedTarget
+                              ? 'bg-amber-500/30 border-amber-400 text-amber-200 scale-110 ring-4 ring-amber-500/30 animate-pulse border-dashed'
+                              : 'bg-slate-950/90 border-cyan-400/60 text-cyan-300 hover:border-amber-400 hover:text-amber-300 border-dashed'
+                        }`}
+                      >
+                        <Target className={`w-4 h-4 shrink-0 ${isHinted ? 'text-slate-950 animate-spin' : 'text-amber-400'}`} />
+                        <span>{isAr ? `موضع #${idx + 1}` : `Target #${idx + 1}`}</span>
+                        {failedAttemptsPerSlot[slotLbl.id] > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-rose-500/30 text-rose-300 border border-rose-500/50 text-[10px] font-mono flex items-center gap-0.5" title={isAr ? `أخطاء مسجلة: ${failedAttemptsPerSlot[slotLbl.id]}` : `Recorded errors: ${failedAttemptsPerSlot[slotLbl.id]}`}>
+                            <AlertTriangle className="w-2.5 h-2.5 text-rose-300" />
+                            <span>{failedAttemptsPerSlot[slotLbl.id]}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
               {/* Interactive Floating Label Pins overlay */}
-              {labelMode !== 'hidden' && filteredLabels.map((lbl) => {
+              {labelMode !== 'hidden' && labelMode !== 'dragQuiz' && filteredLabels.map((lbl) => {
                 const isToggledOff = individualToggles[lbl.id] === false;
                 if (isToggledOff && labelMode === 'full') return null;
 

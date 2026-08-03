@@ -35,6 +35,9 @@ import {
 import { MCQQuestion, LectureData } from '../types';
 import { fallbackQuestions } from '../data/fallbackQuestions';
 import { recordMistake } from '../utils/mistakeBankUtils';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
+import { AnimatedScoreCounter } from './AnimatedScoreCounter';
 
 interface BubbleSheetExamToolProps {
   allLectures: LectureData[];
@@ -53,6 +56,7 @@ export interface BubbleExamQuestion {
 type ToolType = 'pencil' | 'pen' | 'eraser';
 
 export function BubbleSheetExamTool({ allLectures, onToast }: BubbleSheetExamToolProps) {
+  const { isAr, language } = useLanguage();
   // Exam Stage: 'select_preset' | 'exam_active' | 'scanning' | 'results'
   const [examStage, setExamStage] = useState<'select_preset' | 'exam_active' | 'scanning' | 'results'>('select_preset');
 
@@ -714,15 +718,15 @@ export function BubbleSheetExamTool({ allLectures, onToast }: BubbleSheetExamToo
               </p>
             </div>
 
-            {/* Score Big Badge */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 text-center shadow-xl min-w-[200px]">
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">درجة البابل شيت</div>
-              <div className="text-4xl font-black text-amber-400 font-mono">
-                {examMetrics.correctCount} <span className="text-lg text-slate-500 font-normal">/ {examMetrics.total}</span>
-              </div>
-              <div className="text-xs font-extrabold text-emerald-400 mt-1">
-                النسبة المئوية: %{examMetrics.percentage}
-              </div>
+            {/* Score Animated Counter & Ring */}
+            <div className="flex flex-col items-center justify-center shrink-0">
+              <AnimatedScoreCounter
+                value={examMetrics.percentage}
+                size="lg"
+                label={isAr ? `درجة البابل شيت (${examMetrics.correctCount}/${examMetrics.total})` : `Bubble Sheet Score (${examMetrics.correctCount}/${examMetrics.total})`}
+                showRing={true}
+                showSparkles={true}
+              />
             </div>
           </div>
 

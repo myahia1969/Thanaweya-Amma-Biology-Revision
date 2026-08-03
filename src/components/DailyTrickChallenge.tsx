@@ -16,6 +16,8 @@ import {
   Info
 } from 'lucide-react';
 import { LectureData, ExamTrick, MCQQuestion } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
 
 interface DailyTrickChallengeProps {
   allLectures: LectureData[];
@@ -34,6 +36,7 @@ export const DailyTrickChallenge: React.FC<DailyTrickChallengeProps> = ({
   allLectures,
   onNavigateToLecture
 }) => {
+  const { isAr, language } = useLanguage();
   // Aggregate all tricks from all lectures
   const aggregatedTricks = useMemo<CombinedTrickItem[]>(() => {
     const list: CombinedTrickItem[] = [];

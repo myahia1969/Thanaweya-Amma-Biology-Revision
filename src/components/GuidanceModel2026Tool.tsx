@@ -25,6 +25,9 @@ import {
   Bookmark
 } from 'lucide-react';
 import { guidanceQuestions2026, guidanceModelMetaData, GuidanceQuestion } from '../data/guidanceModel2026';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
+import { AnimatedScoreCounter } from './AnimatedScoreCounter';
 
 interface GuidanceModel2026ToolProps {
   onNavigateToTab?: (tab: string) => void;
@@ -35,6 +38,8 @@ export const GuidanceModel2026Tool: React.FC<GuidanceModel2026ToolProps> = ({
   onNavigateToTab,
   onSelectLecture
 }) => {
+  const { isAr, language } = useLanguage();
+
   // Mode: 'overview' | 'exam' | 'result'
   const [examMode, setExamMode] = useState<'overview' | 'exam' | 'result'>('overview');
   
@@ -561,20 +566,15 @@ export const GuidanceModel2026Tool: React.FC<GuidanceModel2026ToolProps> = ({
           {/* Main Score Overview Card */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-2xl backdrop-blur-md space-y-6 text-center">
             
-            <div className="w-20 h-20 rounded-full bg-indigo-500/10 border-2 border-indigo-500/30 flex items-center justify-center mx-auto text-indigo-400">
-              <Award className="w-10 h-10" />
-            </div>
-
-            <div className="space-y-2">
-              <span className={`px-4 py-1.5 rounded-full text-xs font-extrabold border inline-block ${resultsSummary.gradeBadgeColor}`}>
-                {resultsSummary.gradeTitle}
-              </span>
-              <h3 className="text-3xl font-extrabold text-white">
-                درجتك النهائية: {resultsSummary.earnedMarks} / {resultsSummary.totalPossibleMarks}
-              </h3>
-              <p className="text-xl font-mono font-extrabold text-emerald-400">
-                النسبة المئوية: {resultsSummary.percentage}%
-              </p>
+            <div className="flex flex-col items-center justify-center space-y-2">
+              <AnimatedScoreCounter
+                value={resultsSummary.percentage}
+                size="lg"
+                label={isAr ? `الدرجة النهائي (${resultsSummary.earnedMarks}/${resultsSummary.totalPossibleMarks})` : `Final Score (${resultsSummary.earnedMarks}/${resultsSummary.totalPossibleMarks})`}
+                showRing={true}
+                showSparkles={true}
+                gradeTitle={resultsSummary.gradeTitle}
+              />
             </div>
 
             {/* Quick Metrics Bar */}

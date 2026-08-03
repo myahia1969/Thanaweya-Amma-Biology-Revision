@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { biologyFormulas, BiologyFormula } from '../data/biologyFormulas';
 import { FormulaDiagram } from './FormulaDiagram';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
 import {
   FileText,
   Search,
@@ -25,6 +27,7 @@ interface FormulasSheetToolProps {
 }
 
 export function FormulasSheetTool({ onOpenQuickModal }: FormulasSheetToolProps) {
+  const { isAr, language } = useLanguage();
   const [formulaSearch, setFormulaSearch] = useState<string>('');
   const [formulaCategory, setFormulaCategory] = useState<'all' | 'favorites' | 'movement' | 'genetics' | 'immunology'>('all');
   const [globalFormulasHidden, setGlobalFormulasHidden] = useState<boolean>(false);

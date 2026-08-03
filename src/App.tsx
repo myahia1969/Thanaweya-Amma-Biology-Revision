@@ -76,8 +76,15 @@ import { GlobalBenchmarkAnalyticsTool } from './components/GlobalBenchmarkAnalyt
 import { FormulasSheetTool } from './components/FormulasSheetTool';
 import { FloatingFormulaModal } from './components/FloatingFormulaModal';
 import { BubbleSheetExamTool } from './components/BubbleSheetExamTool';
+import { PomodoroTimer } from './components/PomodoroTimer';
+import { useLanguage } from './context/LanguageContext';
+import { getTranslation, getLocalized, getLectureTitle } from './translations';
+import { autoTranslateText } from './utils/autoTranslator';
 
 export default function App() {
+  // Language & Internationalization State
+  const { language, toggleLanguage, isAr, dir } = useLanguage();
+
   // Theme Toggle State - Default is Elegant Dark
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     try {
@@ -1023,7 +1030,7 @@ export default function App() {
   }, [flashcardToast]);
 
   return (
-    <div className={`min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950 ${theme === 'light' ? 'theme-light' : ''}`} dir="rtl">
+    <div className={`min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30 selection:text-emerald-200 bg-[radial-gradient(circle_at_top_left,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-slate-950 ${theme === 'light' ? 'theme-light' : ''}`} dir={isAr ? 'rtl' : 'ltr'}>
       
       {/* Toast Notification for Flashcards Rating */}
       {flashcardToast && (
@@ -1048,21 +1055,21 @@ export default function App() {
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
             <span className="font-black text-amber-300 flex items-center gap-2 text-sm">
               <Target className="w-4.5 h-4.5 text-amber-400" />
-              <span>وضع التركيز التام مفعّل (Focus Mode)</span>
+              <span>{isAr ? 'وضع التركيز التام مفعّل (Focus Mode)' : 'Focus Mode Active'}</span>
             </span>
-            <span className="text-slate-400 hidden md:inline text-xs">| تم إخفاء الترويسة الرئيسية والمشتتات لتوفير أقصى مساحة رؤية للاختبار</span>
+            <span className="text-slate-400 hidden md:inline text-xs">| {isAr ? 'تم إخفاء الترويسة الرئيسية والمشتتات لتوفير أقصى مساحة رؤية للاختبار' : 'Header hidden for maximum viewing space'}</span>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
                 setIsFocusMode(false);
-                setFlashcardToast('🔓 تم الخروج من وضع التركيز وإعادة الترويسة.');
+                setFlashcardToast(isAr ? '🔓 تم الخروج من وضع التركيز وإعادة الترويسة.' : '🔓 Focus mode exited.');
               }}
               className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-4 py-1.5 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-md text-xs"
             >
               <Minimize2 className="w-4 h-4" />
-              <span>إنهاء التركيز (Esc)</span>
+              <span>{isAr ? 'إنهاء التركيز (Esc)' : 'Exit Focus (Esc)'}</span>
             </button>
           </div>
         </div>
@@ -1070,41 +1077,57 @@ export default function App() {
         <header className="bg-slate-900/80 border-b border-slate-800 text-white shadow-xl relative overflow-hidden backdrop-blur-md">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent"></div>
           <div className="max-w-7xl mx-auto px-6 py-10 relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="text-center md:text-right">
+            <div className={`text-center ${isAr ? 'md:text-right' : 'md:text-left'}`}>
               <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 mb-3">
+                {/* Global Pomodoro Study Timer */}
+                <PomodoroTimer />
+
+                {/* Global Language Toggle Switcher Button */}
+                <button
+                  onClick={toggleLanguage}
+                  className="inline-flex items-center gap-1.5 bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 text-cyan-300 border border-cyan-500/40 px-3.5 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-md hover:scale-105 active:scale-95 relative"
+                  title={isAr ? "Switch full application to English" : "تحويل كافة التطبيق إلى اللغة العربية"}
+                >
+                  <Globe className="w-3.5 h-3.5 text-cyan-400 animate-spin-slow" />
+                  <span>{isAr ? '🌐 English' : '🌐 العربية'}</span>
+                  <span className="text-[10px] bg-cyan-400 text-slate-950 font-black px-1.5 py-0.2 rounded-full uppercase">
+                    {isAr ? 'EN' : 'AR'}
+                  </span>
+                </button>
+
                 <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/30">
                   <Award className="w-4 h-4" />
-                  النظام التعليمي الحديث 2026 - علمي علوم
+                  {isAr ? 'النظام التعليمي الحديث 2026 - علمي علوم' : 'Modern Education System 2026 - Scientific Track'}
                 </div>
 
                 {/* Focus Mode Header Button */}
                 <button
                   onClick={() => {
                     setIsFocusMode(true);
-                    setFlashcardToast('🎯 تم تفعيل وضع التركيز! تم إخفاء الترويسة لزيادة المساحة المتاحة للاختبارات.');
+                    setFlashcardToast(isAr ? '🎯 تم تفعيل وضع التركيز!' : '🎯 Focus mode activated!');
                   }}
                   className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shadow-sm relative"
-                  title="إخفاء الترويسة والعناصر المشتتة لزيادة مساحة الرؤية بالكامل"
+                  title={isAr ? "إخفاء الترويسة والعناصر المشتتة لزيادة مساحة الرؤية بالكامل" : "Hide header for focus mode"}
                 >
                   <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
-                  <span>وضع التركيز 🎯</span>
+                  <span>{isAr ? 'وضع التركيز 🎯' : 'Focus Mode 🎯'}</span>
                 </button>
 
                 {/* Theme Toggle Button */}
               <button
                 onClick={toggleTheme}
                 className="inline-flex items-center gap-1.5 bg-slate-950/40 hover:bg-slate-900 text-slate-300 hover:text-white px-3 py-1 rounded-full text-xs font-bold border border-slate-800 transition-all cursor-pointer shadow-sm"
-                title={theme === 'dark' ? "تفعيل الوضع النهاري عالي التباين" : "تفعيل الوضع الليلي الأنيق"}
+                title={theme === 'dark' ? "Daylight Mode" : "Elegant Dark Mode"}
               >
                 {theme === 'dark' ? (
                   <>
                     <Sun className="w-3.5 h-3.5 text-amber-400" />
-                    <span>الوضع المضيء (Daylight)</span>
+                    <span>{getTranslation('daylightMode', language)}</span>
                   </>
                 ) : (
                   <>
                     <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>الوضع الليلي (Elegant Dark)</span>
+                    <span>{getTranslation('nightMode', language)}</span>
                   </>
                 )}
               </button>
@@ -1114,8 +1137,8 @@ export default function App() {
                 onClick={() => {
                   setFlashcardToast(
                     isOnline
-                      ? '⚡ الذاكرة المؤقتة نشطة (Service Worker) - جميع الدروس والأسئلة محفوظة للعمل بدون إنترنت.'
-                      : '📡 أنت الآن في وضع الأوفلاين! التطبيق يعمل بكفاءة كاملة مع حفظ سجل الإجابات محلياً.'
+                      ? (isAr ? '⚡ الذاكرة المؤقتة نشطة (Service Worker) - جميع الدروس والأسئلة محفوظة للعمل بدون إنترنت.' : '⚡ Service Worker active - All lectures & questions saved offline.')
+                      : (isAr ? '📡 أنت الآن في وضع الأوفلاين! التطبيق يعمل بكفاءة كاملة مع حفظ سجل الإجابات محلياً.' : '📡 Offline mode active! App works fully with local storage.')
                   );
                 }}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer shadow-sm relative ${
@@ -1123,17 +1146,17 @@ export default function App() {
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
                     : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                 }`}
-                title="حالة الاتصال والخدمة بدون إنترنت (Offline Capability)"
+                title="Offline Capability Status"
               >
                 {!isOnline ? (
                   <>
                     <WifiOff className="w-3.5 h-3.5 text-amber-400" />
-                    <span>الوضع الأوفلاين (شغّال)</span>
+                    <span>{getTranslation('offlineActive', language)}</span>
                   </>
                 ) : (
                   <>
                     <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>جاهز للأوفلاين ✓</span>
+                    <span>{getTranslation('offlineReady', language)}</span>
                   </>
                 )}
               </button>
@@ -1142,10 +1165,10 @@ export default function App() {
               <button
                 onClick={() => setIsRemindersModalOpen(true)}
                 className="inline-flex items-center gap-1.5 bg-slate-950/40 hover:bg-slate-900 text-slate-300 hover:text-white px-3 py-1 rounded-full text-xs font-bold border border-slate-800 transition-all cursor-pointer shadow-sm relative"
-                title="جدول تنبيهات المذاكرة والمراجعة المتباعدة"
+                title={isAr ? "جدول تنبيهات المذاكرة والمراجعة المتباعدة" : "Spaced repetition study reminders schedule"}
               >
                 <Bell className={`w-3.5 h-3.5 ${dueReminders.length > 0 ? 'text-amber-400 animate-bounce' : 'text-emerald-400'}`} />
-                <span>تنبيهات المذاكرة</span>
+                <span>{getTranslation('studyRemindersBtn', language)}</span>
                 {dueReminders.length > 0 && (
                   <span className="bg-rose-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-extrabold mr-1">
                     {dueReminders.length}
@@ -1157,10 +1180,10 @@ export default function App() {
               <button
                 onClick={() => setIsChatbotOpen(true)}
                 className="inline-flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shadow-sm relative"
-                title="مستشار الأحياء الذكي والشات بوت التفاعلي"
+                title={isAr ? "مستشار الأحياء الذكي والشات بوت التفاعلي" : "AI Interactive Biology Advisor"}
               >
                 <Bot className="w-3.5 h-3.5 text-emerald-400 animate-bounce" />
-                <span>مستشار الأحياء الذكي</span>
+                <span>{getTranslation('aiAdvisorBtn', language)}</span>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               </button>
 
@@ -1172,10 +1195,10 @@ export default function App() {
                   if (mainElem) mainElem.scrollIntoView({ behavior: 'smooth' });
                 }}
                 className="inline-flex items-center gap-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-3.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer shadow-sm relative"
-                title="خريطة المفاهيم التفاعلية D3.js"
+                title={isAr ? "خريطة المفاهيم التفاعلية D3.js" : "Interactive D3.js Concept Map"}
               >
                 <Network className="w-3.5 h-3.5 text-indigo-400" />
-                <span>خريطة المفاهيم D3</span>
+                <span>{getTranslation('conceptMapBtn', language)}</span>
               </button>
 
               {/* Official Ministry Guidance Model 2026 Header Button */}
@@ -1186,32 +1209,34 @@ export default function App() {
                   if (mainElem) mainElem.scrollIntoView({ behavior: 'smooth' });
                 }}
                 className="inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-indigo-500/20 hover:from-amber-500/30 hover:to-indigo-500/30 text-amber-300 border border-amber-500/40 px-3.5 py-1 rounded-full text-xs font-extrabold transition-all cursor-pointer shadow-md relative group"
-                title="النموذج الاسترشادي الرسمي لوزارة التربية والتعليم 2026"
+                title={isAr ? "النموذج الاسترشادي الرسمي لوزارة التربية والتعليم 2026" : "Official Ministry Guidance Model 2026"}
               >
                 <GraduationCap className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
-                <span>النموذج الاسترشادي 2026</span>
-                <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded font-extrabold mr-1">رسمي</span>
+                <span>{getTranslation('guidanceModelBtn', language)}</span>
+                <span className="bg-amber-400 text-slate-950 text-[10px] px-1.5 py-0.2 rounded font-extrabold mr-1">
+                  {getTranslation('officialBadge', language)}
+                </span>
               </button>
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white mb-2">
-              كورس المراجعة النهائية المكثف في الأحياء
+              {getTranslation('courseTitle', language)}
             </h1>
             <p className="text-slate-400 max-w-2xl text-sm md:text-base leading-relaxed">
-              منصة تفاعلية ذكية مصممة خصيصاً لطلاب الثانوية العامة للتمرس على التفكير المفاهيمي، وحل تريكات المنحنيات والربط بين الفصول وفقاً لنمط امتحانات الوزارة للأعوام 2021-2025.
+              {getTranslation('courseSubtitle', language)}
             </p>
           </div>
           <div className="flex items-center gap-3 bg-slate-950/60 border border-slate-800/80 p-4 rounded-xl backdrop-blur-md">
             <div className="text-center px-4 border-l border-slate-850">
               <span className="block text-2xl font-bold text-emerald-400">06</span>
-              <span className="text-xs text-slate-400">محاضرات مكثفة</span>
+              <span className="text-xs text-slate-400">{getTranslation('intensiveLecturesBadge', language)}</span>
             </div>
             <div className="text-center px-4 border-l border-slate-850">
               <span className="block text-2xl font-bold text-cyan-400">100%</span>
-              <span className="text-xs text-slate-400">تغطية تريكات</span>
+              <span className="text-xs text-slate-400">{getTranslation('tricksCoverageBadge', language)}</span>
             </div>
             <div className="text-center px-4">
-              <span className="block text-2xl font-bold text-amber-400">تفاعلي</span>
-              <span className="text-xs text-slate-400">محاكاة ومنحنيات</span>
+              <span className="block text-2xl font-bold text-amber-400">{isAr ? 'تفاعلي' : 'Interactive'}</span>
+              <span className="text-xs text-slate-400">{getTranslation('interactiveSimulationBadge', language)}</span>
             </div>
           </div>
         </div>
@@ -1230,13 +1255,13 @@ export default function App() {
               </div>
               <div>
                 <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                  🔔 تنبيه المذاكرة الدوري (جدول التكرار المتباعد):
+                  🔔 {isAr ? 'تنبيه المذاكرة الدوري (جدول التكرار المتباعد):' : 'Spaced Repetition Study Reminder:'}
                   <span className="text-xs bg-rose-500 text-white font-bold px-2 py-0.5 rounded-full">
-                    {dueReminders.length} فصول مستحقة للمراجعة اليوم
+                    {dueReminders.length} {isAr ? 'فصول مستحقة للمراجعة اليوم' : 'Chapters due for review today'}
                   </span>
                 </h4>
                 <p className="text-xs text-slate-300 font-sans mt-0.5">
-                  تذكير بموعد المراجعة الدورية بناءً على جدولك المخصص لحفظ مفاهيم الأحياء وتريكاتها.
+                  {isAr ? 'تذكير بموعد المراجعة الدورية بناءً على جدولك المخصص لحفظ مفاهيم الأحياء وتريكاتها.' : 'Review reminder based on your spaced schedule.'}
                 </p>
               </div>
             </div>
@@ -1246,7 +1271,7 @@ export default function App() {
                 onClick={() => setIsRemindersModalOpen(true)}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
               >
-                <span>إدارة التنبيهات وفحص الفصول</span>
+                <span>{isAr ? 'إدارة التنبيهات وفحص الفصول' : 'Manage Reminders'}</span>
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1268,8 +1293,8 @@ export default function App() {
                       : 'bg-slate-900 hover:bg-slate-800 border border-slate-800/80 text-slate-300'
                   }`}
                 >
-                  <span className="block text-[10px] opacity-75 font-mono mb-0.5">المحاضرة {lecture.id}</span>
-                  <span className="text-sm">{lecture.arabicTitle}</span>
+                  <span className="block text-[10px] opacity-75 font-mono mb-0.5">{getTranslation('lecturePrefix', language)} {lecture.id}</span>
+                  <span className="text-sm">{isAr ? lecture.arabicTitle : (lecture.title || autoTranslateText(lecture.arabicTitle))}</span>
                 </button>
               ))}
             </div>
@@ -1536,7 +1561,9 @@ export default function App() {
           {/* Workstation Navigation Menu */}
           <div className="lg:col-span-1 space-y-2">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-xl sticky top-6">
-              <span className="block text-xs font-bold text-slate-500 px-1 mb-3 uppercase tracking-wider font-mono">خيارات المراجعة</span>
+              <span className="block text-xs font-bold text-slate-500 px-1 mb-3 uppercase tracking-wider font-mono">
+                {isAr ? 'خيارات المراجعة' : 'REVISION OPTIONS'}
+              </span>
               
               <div className="space-y-1">
                 <button
@@ -1548,7 +1575,7 @@ export default function App() {
                   }`}
                 >
                   <BookOpen className={`w-4 h-4 ${activeTab === 'concepts' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>الشرح والمفاهيم</span>
+                  <span>{getTranslation('tabConcepts', language)}</span>
                 </button>
 
                 {/* Official Ministry Guidance Model 2026 Navigation Item */}
@@ -1562,9 +1589,11 @@ export default function App() {
                 >
                   <div className="flex items-center gap-3">
                     <GraduationCap className={`w-4 h-4 ${activeTab === 'guidance_model_2026' ? 'text-amber-400' : 'text-amber-400/80'}`} />
-                    <span>النموذج الاسترشادي 2026</span>
+                    <span>{getTranslation('guidanceModelBtn', language)}</span>
                   </div>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">الوزارة</span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">
+                    {getTranslation('officialBadge', language)}
+                  </span>
                 </button>
 
                 {/* Past National Exams Egypt Navigation Item */}
@@ -1578,9 +1607,11 @@ export default function App() {
                 >
                   <div className="flex items-center gap-3">
                     <Award className={`w-4 h-4 ${activeTab === 'past_exams_egypt' ? 'text-emerald-400' : 'text-emerald-400/80'}`} />
-                    <span>امتحانات مصر والنموذجية 🏛️</span>
+                    <span>{getTranslation('tabPastExams', language)}</span>
                   </div>
-                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded font-extrabold">امتحانات رسمية</span>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded font-extrabold">
+                    {getTranslation('officialBadge', language)}
+                  </span>
                 </button>
 
                 <button
@@ -1592,7 +1623,7 @@ export default function App() {
                   }`}
                 >
                   <Layers className={`w-4 h-4 ${activeTab === 'visuals' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>الرسومات التوضيحية</span>
+                  <span>{getTranslation('tabVisualTools', language)}</span>
                 </button>
 
                 <button
@@ -1604,7 +1635,7 @@ export default function App() {
                   }`}
                 >
                   <Network className={`w-4 h-4 ${activeTab === 'concept_map' ? 'text-indigo-400' : 'text-slate-400'}`} />
-                  <span>خريطة المفاهيم D3</span>
+                  <span>{getTranslation('tabConceptMap', language)}</span>
                 </button>
 
                 <button
@@ -1616,7 +1647,7 @@ export default function App() {
                   }`}
                 >
                   <TrendingUp className={`w-4 h-4 ${activeTab === 'tricks' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>التريكات والمنحنيات</span>
+                  <span>{getTranslation('tabTricks', language)}</span>
                 </button>
 
                 <button
@@ -1631,7 +1662,7 @@ export default function App() {
                   }`}
                 >
                   <HelpCircle className={`w-4 h-4 ${activeTab === 'quiz' && quizSubTab === 'practice' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>بنك الأسئلة التفاعلي</span>
+                  <span>{getTranslation('tabQuestionBank', language)}</span>
                 </button>
 
                 {/* Speed Quiz Tool Button */}
@@ -1648,9 +1679,9 @@ export default function App() {
                 >
                   <div className="flex items-center gap-3">
                     <Zap className={`w-4 h-4 ${activeTab === 'quiz' && quizSubTab === 'speed_quiz' ? 'text-amber-400' : 'text-amber-400/80'}`} />
-                    <span>اختبار السرعة التنافسي</span>
+                    <span>{isAr ? 'اختبار السرعة التنافسي' : 'Competitive Speed Quiz'}</span>
                   </div>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">تحدي ⚡</span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">{isAr ? 'تحدي ⚡' : 'Speed ⚡'}</span>
                 </button>
 
                 {/* Mock Exam Button */}
@@ -1667,9 +1698,9 @@ export default function App() {
                 >
                   <div className="flex items-center gap-3">
                     <ShieldCheck className={`w-4 h-4 ${activeTab === 'quiz' && quizSubTab === 'mock_exam' ? 'text-amber-400' : 'text-amber-400/80'}`} />
-                    <span>اختبار محاكاة شامل (50 سؤال)</span>
+                    <span>{getTranslation('tabMockExam', language)}</span>
                   </div>
-                  <span className="text-[10px] bg-gradient-to-l from-amber-500 to-orange-500 text-slate-950 px-2 py-0.5 rounded font-black">3س 🏛️</span>
+                  <span className="text-[10px] bg-gradient-to-l from-amber-500 to-orange-500 text-slate-950 px-2 py-0.5 rounded font-black">3h 🏛️</span>
                 </button>
 
                 {/* Bubble Sheet Exam Button */}
@@ -1686,9 +1717,9 @@ export default function App() {
                 >
                   <div className="flex items-center gap-3">
                     <FileCheck2 className={`w-4 h-4 ${activeTab === 'quiz' && quizSubTab === 'bubble_sheet' ? 'text-amber-400' : 'text-amber-400/80'}`} />
-                    <span>امتحانات البابل شيت الرسمية</span>
+                    <span>{getTranslation('tabBubbleSheet', language)}</span>
                   </div>
-                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">تظليل 📝</span>
+                  <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-extrabold">{isAr ? 'تظليل 📝' : 'Bubble 📝'}</span>
                 </button>
 
                 {/* Mistake Bank Tool Button */}
@@ -1705,9 +1736,9 @@ export default function App() {
                 >
                   <div className="flex items-center gap-3">
                     <AlertTriangle className={`w-4 h-4 ${activeTab === 'quiz' && quizSubTab === 'mistake_bank' ? 'text-rose-400' : 'text-rose-400/80'}`} />
-                    <span>بنك الأخطاء وتصحيح المفاهيم</span>
+                    <span>{getTranslation('tabMistakeBank', language)}</span>
                   </div>
-                  <span className="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded font-bold">خاص 🧠</span>
+                  <span className="text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded font-bold">🧠</span>
                 </button>
 
                 <button
@@ -1719,7 +1750,7 @@ export default function App() {
                   }`}
                 >
                   <RotateCcw className={`w-4 h-4 ${activeTab === 'flashcards' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>بطاقات الاستذكار النشط</span>
+                  <span>{getTranslation('tabFlashcards', language)}</span>
                 </button>
 
                 <button
@@ -1731,7 +1762,7 @@ export default function App() {
                   }`}
                 >
                   <BarChart3 className={`w-4 h-4 ${activeTab === 'performance' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>تحليل وتحصيل الأداء</span>
+                  <span>{getTranslation('tabPerformance', language)}</span>
                 </button>
 
                 <button
@@ -1743,7 +1774,7 @@ export default function App() {
                   }`}
                 >
                   <FileText className={`w-4 h-4 ${activeTab === 'formulas' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                  <span>ورقة القوانين التفاعلية</span>
+                  <span>{getTranslation('tabFormulasSheet', language)}</span>
                 </button>
 
                 {/* Special Tool Tabs - Now Universal for maximum student benefit */}

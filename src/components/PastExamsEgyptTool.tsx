@@ -2,6 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { pastExamsEgyptList, PastExamPaper } from '../data/pastExamsEgypt';
 import { MCQQuestion } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { autoTranslateText } from '../utils/autoTranslator';
+import { AnimatedScoreCounter } from './AnimatedScoreCounter';
 import {
   GraduationCap,
   Award,
@@ -38,6 +41,8 @@ interface PastExamsEgyptToolProps {
 }
 
 export function PastExamsEgyptTool({ onToast, isFocusMode, onToggleFocusMode }: PastExamsEgyptToolProps) {
+  const { isAr, language } = useLanguage();
+
   // Active Exam Paper State
   const [selectedExamId, setSelectedExamId] = useState<string>(pastExamsEgyptList[0].id);
   
@@ -578,17 +583,19 @@ export function PastExamsEgyptTool({ onToast, isFocusMode, onToggleFocusMode }: 
       {/* Result Report Mode */}
       {viewMode === 'result' && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 space-y-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center mx-auto">
-            <Award className="w-8 h-8" />
+          <div className="flex flex-col items-center justify-center space-y-2">
+            <AnimatedScoreCounter
+              value={scoreReport.percentage}
+              size="lg"
+              label={isAr ? `الدرجة النهائي (${scoreReport.correctCount}/${scoreReport.total})` : `Final Score (${scoreReport.correctCount}/${scoreReport.total})`}
+              showRing={true}
+              showSparkles={true}
+            />
           </div>
 
           <div className="space-y-1">
-            <h3 className="text-xl font-black text-white">تقرير نتيجة الامتحان التجريبي الرسمي</h3>
+            <h3 className="text-xl font-black text-white">{isAr ? "تقرير نتيجة الامتحان التجريبي الرسمي" : "Official Past Exam Result Report"}</h3>
             <p className="text-xs text-slate-400">{selectedExam.arabicTitle}</p>
-          </div>
-
-          <div className="text-4xl font-black text-amber-400 font-mono">
-            {scoreReport.percentage}%
           </div>
 
           <div className="grid grid-cols-3 gap-3 max-w-md mx-auto text-xs font-bold">

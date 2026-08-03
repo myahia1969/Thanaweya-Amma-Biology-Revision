@@ -76,6 +76,69 @@ export function markMistakeAsMastered(questionId: string): void {
   saveMistakeBank(updated);
 }
 
+export function recordDiagramLabelMistake(
+  diagramTitle: string,
+  targetPartName: string,
+  targetPartId: string,
+  wrongLabelPlacedName: string,
+  partDescription: string,
+  lectureId: number = 1,
+  lectureTitle: string = 'الشروحات البصرية - التسميات والتوضيحات'
+): void {
+  const currentBank = getMistakeBank();
+  const mistakeId = `diagram-${diagramTitle.replace(/\s+/g, '-')}-${targetPartId}`;
+  const existingIdx = currentBank.findIndex(item => item.id === mistakeId);
+
+  const timestamp = new Date().toLocaleDateString('ar-EG', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+
+  const question: MCQQuestion = {
+    id: mistakeId,
+    questionText: `[رسم توضيحي: ${diagramTitle}] ما هي التسمية الصحيحة للجزء المشار إليه (${targetPartName})؟`,
+    options: {
+      A: targetPartName,
+      B: wrongLabelPlacedName,
+      C: 'عضية أو تركيب آخر',
+      D: 'غير ذلك'
+    },
+    correctAnswer: 'A',
+    explanation: {
+      correct: `التسمية الصحيحة لهذا الموضع هي "${targetPartName}". ${partDescription}`,
+      incorrectA: `تم وضع التسمية الخاطئة "${wrongLabelPlacedName}" بدلاً من "${targetPartName}".`
+    },
+    complexity: 'medium',
+    sourceYear: 'اختبار التسميات البصرية'
+  };
+
+  if (existingIdx >= 0) {
+    const existing = currentBank[existingIdx];
+    currentBank[existingIdx] = {
+      ...existing,
+      wrongAnswerChosen: wrongLabelPlacedName,
+      timestamp,
+      attemptCount: (existing.attemptCount || 1) + 1,
+      mastered: false
+    };
+  } else {
+    const newItem: MistakeItem = {
+      id: mistakeId,
+      question,
+      wrongAnswerChosen: wrongLabelPlacedName,
+      lectureId,
+      lectureTitle,
+      timestamp,
+      attemptCount: 1,
+      mastered: false
+    };
+    currentBank.unshift(newItem);
+  }
+
+  saveMistakeBank(currentBank);
+}
+
 export function DEFAULT_DEMO_MISTAKES(): MistakeItem[] {
   return [
     {
